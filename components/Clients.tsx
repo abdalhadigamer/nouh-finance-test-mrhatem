@@ -1,0 +1,388 @@
+
+import React, { useState } from 'react';
+import { MOCK_CLIENTS, MOCK_PROJECTS } from '../constants';
+import { Client, AppDocument } from '../types';
+import { Search, UserPlus, Phone, Mail, Building, Key, Eye, EyeOff, Edit, Trash2, FolderOpen, Upload, Paperclip, FileText, X } from 'lucide-react';
+import Modal from './Modal';
+
+interface ClientsProps {
+  onViewProjects: (client: Client) => void;
+}
+
+const Clients: React.FC<ClientsProps> = ({ onViewProjects }) => {
+  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [currentClient, setCurrentClient] = useState<Partial<Client>>({
+    name: '',
+    companyName: '',
+    username: '',
+    password: '',
+    phone: '',
+    email: '',
+    documents: []
+  });
+
+  const togglePasswordVisibility = (id: string) => {
+    setShowPasswordMap(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const getClientProjectCount = (username: string) => {
+    return MOCK_PROJECTS.filter(p => p.clientUsername === username).length;
+  };
+
+  const handleSaveClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (isEditMode && currentClient.id) {
+      // Edit
+      setClients(clients.map(c => c.id === currentClient.id ? { ...c, ...currentClient } as Client : c));
+    } else {
+      // Add
+      const newClientData: Client = {
+        ...currentClient,
+        id: `c${Date.now()}`,
+        joinDate: new Date().toISOString().split('T')[0],
+        avatar: currentClient.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentClient.name}`
+      } as Client;
+      setClients([newClientData, ...clients]);
+    }
+    
+    setIsModalOpen(false);
+    resetForm();
+  };
+
+  const handleDeleteClient = (id: string) => {
+    if (confirm('هل أنت متأكد من حذف هذا العميل؟')) {
+      setClients(clients.filter(c => c.id !== id));
+    }
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setIsEditMode(false);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (client: Client) => {
+    setCurrentClient(client);
+    setIsEditMode(true);
+    setIsModalOpen(true);
+  };
+
+  const resetForm = () => {
+    setCurrentClient({
+      name: '',
+      companyName: '',
+      username: '',
+      password: '',
+      phone: '',
+      email: '',
+      documents: []
+    });
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const imageUrl = URL.createObjectURL(file);
+      setCurrentClient({ ...currentClient, avatar: imageUrl });
+    }
+  };
+
+  const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const newDoc: AppDocument = {
+        id: `doc-${Date.now()}`,
+        name: file.name,
+        type: file.type.split('/')[1] || 'File',
+        url: URL.createObjectURL(file),
+        date: new Date().toISOString().split('T')[0]
+      };
+      setCurrentClient({
+        ...currentClient,
+        documents: [...(currentClient.documents || []), newDoc]
+      });
+    }
+  };
+
+  const filteredClients = clients.filter(c => 
+    c.name.includes(searchTerm) || 
+    c.companyName?.includes(searchTerm) ||
+    c.username.includes(searchTerm)
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">إدارة العملاء</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">إدارة بيانات العملاء وبيانات الدخول الخاصة بهم</p>
+        </div>
+        <button 
+          onClick={openAddModal}
+          className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+        >
+          <UserPlus size={20} />
+          <span>إضافة عميل جديد</span>
+        </button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="bg-white dark:bg-dark-900 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800">
+        <div className="relative max-w-md">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <input 
+            type="text"
+            placeholder="بحث عن عميل باسمه أو اسم المستخدم..."
+            className="w-full pl-4 pr-10 py-2.5 border border-gray-300 dark:border-dark-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all dark:bg-dark-950 dark:text-white"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Clients Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredClients.map((client) => (
+          <div key={client.id} className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 hover:shadow-md transition-all group overflow-hidden">
+            <div 
+              className="p-6 cursor-pointer"
+              onClick={() => onViewProjects(client)} // Click card to view projects
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <img src={client.avatar} alt={client.name} className="w-12 h-12 rounded-full border border-gray-200 dark:border-dark-700 bg-gray-50 dark:bg-dark-800 object-cover" />
+                  <div>
+                    <h3 className="font-bold text-gray-800 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{client.name}</h3>
+                    {client.companyName && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                        <Building size={10} /> {client.companyName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs px-2 py-1 rounded-md font-bold flex items-center gap-1">
+                  <FolderOpen size={12} />
+                  {getClientProjectCount(client.username)} مشاريع
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-gray-50 dark:border-dark-800">
+                <div className="flex items-center justify-between text-sm" onClick={(e) => e.stopPropagation()}>
+                   <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                     <Key size={14} />
+                     <span>اسم المستخدم:</span>
+                   </div>
+                   <span className="font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-800 px-2 rounded">{client.username}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm" onClick={(e) => e.stopPropagation()}>
+                   <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                     <div onClick={() => togglePasswordVisibility(client.id)} className="cursor-pointer hover:text-primary-600 dark:hover:text-primary-400">
+                        {showPasswordMap[client.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                     </div>
+                     <span>كلمة المرور:</span>
+                   </div>
+                   <span className="font-mono font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-800 px-2 rounded min-w-[3rem] text-center">
+                     {showPasswordMap[client.id] ? client.password : '•••••'}
+                   </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mt-2">
+                  <Phone size={14} />
+                  <span>{client.phone}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <Mail size={14} />
+                  <span className="truncate">{client.email}</span>
+                </div>
+                {client.documents && client.documents.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                    <Paperclip size={14} />
+                    <span>{client.documents.length} مرفقات</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-dark-800 p-3 border-t border-gray-100 dark:border-dark-700 flex justify-between items-center opacity-100 transition-opacity">
+              <button
+                onClick={() => onViewProjects(client)}
+                className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline px-2"
+              >
+                عرض المشاريع
+              </button>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); openEditModal(client); }}
+                  className="p-2 text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                  title="تعديل البيانات"
+                >
+                  <Edit size={16} />
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }}
+                  className="p-2 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                  title="حذف العميل"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add/Edit Modal */}
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        title={isEditMode ? "تعديل بيانات العميل" : "إضافة عميل جديد"}
+      >
+        <form onSubmit={handleSaveClient} className="space-y-4">
+          <div className="flex justify-center mb-6">
+             <div className="relative group cursor-pointer">
+                <div className="w-24 h-24 rounded-full border-2 border-gray-200 dark:border-dark-700 overflow-hidden bg-gray-50 dark:bg-dark-800">
+                   {currentClient.avatar ? (
+                     <img src={currentClient.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                   ) : (
+                     <div className="w-full h-full flex items-center justify-center text-gray-300">
+                       <UserPlus size={32} />
+                     </div>
+                   )}
+                </div>
+                <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                   <Upload className="text-white" size={24} />
+                </div>
+                <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleAvatarChange} />
+             </div>
+          </div>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800 flex items-start gap-3 mb-4">
+             <Key className="text-blue-600 dark:text-blue-400 w-5 h-5 mt-1 flex-shrink-0" />
+             <div>
+               <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm">بيانات الدخول</h4>
+               <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+                 سيتمكن العميل من الدخول للبوابة باستخدام اسم المستخدم وكلمة المرور أدناه لرؤية المشاريع المرتبطة به.
+               </p>
+             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم العميل الكامل</label>
+              <input 
+                required
+                type="text" 
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
+                value={currentClient.name}
+                onChange={(e) => setCurrentClient({...currentClient, name: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الشركة / الجهة (اختياري)</label>
+              <input 
+                type="text" 
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
+                value={currentClient.companyName}
+                onChange={(e) => setCurrentClient({...currentClient, companyName: e.target.value})}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 dark:bg-dark-800 p-4 rounded-xl border border-gray-200 dark:border-dark-700">
+            <div>
+              <label className="block text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">اسم المستخدم</label>
+              <input 
+                required
+                type="text" 
+                placeholder="مثال: client_ahmed"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none font-mono text-sm dark:bg-dark-950 dark:text-white"
+                value={currentClient.username}
+                onChange={(e) => setCurrentClient({...currentClient, username: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">كلمة المرور</label>
+              <input 
+                required
+                type="text" 
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none font-mono text-sm dark:bg-dark-950 dark:text-white"
+                value={currentClient.password}
+                onChange={(e) => setCurrentClient({...currentClient, password: e.target.value})}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم الهاتف</label>
+              <input 
+                type="text" 
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
+                value={currentClient.phone}
+                onChange={(e) => setCurrentClient({...currentClient, phone: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">البريد الإلكتروني</label>
+              <input 
+                type="email" 
+                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
+                value={currentClient.email}
+                onChange={(e) => setCurrentClient({...currentClient, email: e.target.value})}
+              />
+            </div>
+          </div>
+
+          <div>
+             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">مرفقات (عقود، ملفات)</label>
+             <div className="border border-dashed border-gray-300 dark:border-dark-600 rounded-lg p-3 bg-gray-50 dark:bg-dark-800 flex flex-col items-center justify-center relative cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors">
+                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleDocumentUpload} />
+                <Paperclip size={16} className="text-gray-400 mb-1" />
+                <span className="text-xs text-gray-500 dark:text-gray-400">إضافة ملف جديد</span>
+             </div>
+             {currentClient.documents && currentClient.documents.length > 0 && (
+               <div className="mt-2 space-y-1">
+                 {currentClient.documents.map(doc => (
+                   <div key={doc.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-dark-900 p-1 rounded border border-gray-200 dark:border-dark-700">
+                      <FileText size={12} />
+                      <span className="truncate flex-1">{doc.name}</span>
+                      <X size={12} className="cursor-pointer text-gray-400 hover:text-red-500" onClick={() => {
+                        setCurrentClient({...currentClient, documents: currentClient.documents?.filter(d => d.id !== doc.id)})
+                      }}/>
+                   </div>
+                 ))}
+               </div>
+             )}
+          </div>
+          
+          <div className="pt-4 flex gap-3">
+            <button 
+              type="submit" 
+              className="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 rounded-lg transition-colors"
+            >
+              حفظ البيانات
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setIsModalOpen(false)}
+              className="flex-1 bg-gray-100 dark:bg-dark-800 hover:bg-gray-200 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-300 font-bold py-2.5 rounded-lg transition-colors"
+            >
+              إلغاء
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+};
+
+export default Clients;
