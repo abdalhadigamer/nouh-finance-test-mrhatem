@@ -12,8 +12,7 @@ import {
   TrendingUp, 
   Phone,
   Mail,
-  ExternalLink,
-  AlertCircle
+  ExternalLink
 } from 'lucide-react';
 
 interface ClientDetailsProps {
@@ -148,40 +147,36 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ client, projects, onBack,
                       <span>{project.location}</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <DollarSign size={16} className="text-gray-400" />
+                      <span className="font-bold">{formatCurrency(project.budget)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
                       <Calendar size={16} className="text-gray-400" />
                       <span>{project.startDate}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded-lg mt-2">
-                      <span className="text-gray-500">قيمة العقد:</span>
-                      <span className="font-bold text-gray-800">{formatCurrency(project.budget)}</span>
-                    </div>
                   </div>
 
-                  {project.status !== ProjectStatus.PROPOSED && (
-                    <div className="mt-4">
-                       <div className="flex justify-between text-xs mb-1">
-                         <span className="text-gray-500">الإنجاز</span>
-                         <span className="font-bold text-gray-800">{project.progress}%</span>
-                       </div>
-                       <div className="w-full bg-gray-100 rounded-full h-1.5">
-                         <div 
-                          className={`h-1.5 rounded-full ${getProgressColor(project.progress)}`} 
-                          style={{ width: `${project.progress}%` }}
-                         ></div>
-                       </div>
+                  <div className="mt-4 pt-4 border-t border-gray-50">
+                    <div className="flex justify-between text-xs mb-1">
+                       <span className="text-gray-500">الإنجاز</span>
+                       <span className="font-bold">{project.progress}%</span>
                     </div>
-                  )}
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                       <div 
+                         className={`h-1.5 rounded-full ${getProgressColor(project.progress)}`} 
+                         style={{ width: `${project.progress}%` }}
+                       ></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="bg-white p-10 rounded-xl border border-gray-200 border-dashed text-center">
-             <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-               <AlertCircle className="text-gray-400 w-8 h-8"/>
-             </div>
-             <h3 className="text-lg font-bold text-gray-700">لا توجد مشاريع</h3>
-             <p className="text-gray-500">لا يوجد مشاريع مرتبطة بهذا العميل حالياً.</p>
+          <div className="bg-gray-50 rounded-xl p-12 text-center border-2 border-dashed border-gray-200">
+             <Briefcase size={48} className="mx-auto text-gray-300 mb-4" />
+             <h3 className="text-lg font-bold text-gray-600">لا توجد مشاريع لهذا العميل</h3>
+             <p className="text-gray-500 text-sm mt-1">قم بإضافة مشروع جديد وربطه بهذا العميل ليظهر هنا.</p>
           </div>
         )}
       </div>

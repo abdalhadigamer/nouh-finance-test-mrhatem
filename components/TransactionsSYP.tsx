@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { getRecentSYPTransactions, formatCurrency } from '../services/dataService';
 import { Transaction, TransactionType } from '../types';
-import { Download, PlusCircle, ArrowUpRight, ArrowDownLeft, Search, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { Download, PlusCircle, ArrowUpRight, ArrowDownLeft, Search, TrendingDown, TrendingUp } from 'lucide-react';
 import Modal from './Modal';
 
 const TransactionsSYP: React.FC = () => {

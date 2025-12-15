@@ -66,7 +66,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
 
   const handleOpenProject = (project: Project) => {
     setSelectedProject(project);
-    const relatedInvoices = MOCK_INVOICES.filter(inv => inv.projectId === project.id && inv.type === InvoiceType.SALES);
+    // Filter invoices: Must be for this project, Purchase Type (as per previous instructions sales were removed, keeping legacy check just in case), AND VISIBLE TO CLIENT
+    const relatedInvoices = MOCK_INVOICES.filter(inv => 
+        inv.projectId === project.id && 
+        inv.isClientVisible === true
+    );
     setProjectInvoices(relatedInvoices);
     setView('project_detail');
   };
@@ -104,17 +108,17 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
   const getStatusBadge = (status: ProjectStatus) => {
     switch (status) {
       case ProjectStatus.EXECUTION:
-        return <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><Clock size={12} /> جاري التنفيذ</span>;
+        return <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><Clock size={12} /> جاري التنفيذ</span>;
       case ProjectStatus.DESIGN:
-        return <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><Briefcase size={12} /> مرحلة التصميم</span>;
+        return <span className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><Briefcase size={12} /> مرحلة التصميم</span>;
       case ProjectStatus.PROPOSED:
-        return <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><FileText size={12} /> مقترح</span>;
+        return <span className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><FileText size={12} /> مقترح</span>;
       case ProjectStatus.STOPPED:
-        return <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><AlertCircle size={12} /> متوقف</span>;
+        return <span className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><AlertCircle size={12} /> متوقف</span>;
       case ProjectStatus.DELIVERED:
-        return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><CheckCircle size={12} /> مكتمل</span>;
+        return <span className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 w-fit"><CheckCircle size={12} /> مكتمل</span>;
       default:
-        return <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-bold w-fit">{status}</span>;
+        return <span className="bg-gray-100 text-gray-700 dark:bg-dark-800 dark:text-gray-300 px-3 py-1 rounded-full text-xs font-bold w-fit">{status}</span>;
     }
   };
 
@@ -125,7 +129,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
       {/* Floating Button */}
       <button 
         onClick={() => setIsChatOpen(!isChatOpen)}
-        className="fixed bottom-6 left-6 z-50 bg-primary-600 text-white p-4 rounded-full shadow-2xl hover:bg-primary-700 transition-transform hover:scale-110 flex items-center justify-center border-4 border-white"
+        className="fixed bottom-6 left-6 z-50 bg-primary-600 text-white p-4 rounded-full shadow-2xl hover:bg-primary-700 transition-transform hover:scale-110 flex items-center justify-center border-4 border-white dark:border-dark-900"
         title="محادثة فورية"
       >
         {isChatOpen ? <X size={24} /> : <MessageCircle size={24} />}
@@ -133,7 +137,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
 
       {/* Chat Window */}
       {isChatOpen && (
-        <div className="fixed bottom-24 left-6 z-50 w-80 md:w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[500px] h-[500px] animate-in slide-in-from-bottom-10 fade-in duration-300 font-cairo text-right" dir="rtl">
+        <div className="fixed bottom-24 left-6 z-50 w-80 md:w-96 bg-white dark:bg-dark-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-dark-700 overflow-hidden flex flex-col max-h-[500px] h-[500px] animate-in slide-in-from-bottom-10 fade-in duration-300 font-cairo text-right" dir="rtl">
            {/* Header */}
            <div className="bg-primary-900 p-4 text-white flex justify-between items-center shadow-md">
               <div className="flex items-center gap-3">
@@ -150,11 +154,11 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
            </div>
            
            {/* Messages Area */}
-           <div className="flex-1 bg-gray-50 p-4 overflow-y-auto space-y-3 custom-scrollbar bg-[url('https://www.transparenttextures.com/patterns/subtle-white-feathers.png')]">
+           <div className="flex-1 bg-gray-50 dark:bg-dark-950 p-4 overflow-y-auto space-y-3 custom-scrollbar bg-[url('https://www.transparenttextures.com/patterns/subtle-white-feathers.png')] dark:bg-none">
               <div className="text-center text-[10px] text-gray-400 my-2">اليوم</div>
               {messages.map(msg => (
                  <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm shadow-sm relative group ${msg.sender === 'me' ? 'bg-primary-600 text-white rounded-bl-none' : 'bg-white text-gray-800 border border-gray-100 rounded-br-none'}`}>
+                    <div className={`max-w-[85%] p-3 rounded-2xl text-sm shadow-sm relative group ${msg.sender === 'me' ? 'bg-primary-600 text-white rounded-bl-none' : 'bg-white dark:bg-dark-800 text-gray-800 dark:text-white border border-gray-100 dark:border-dark-700 rounded-br-none'}`}>
                        <p className="leading-relaxed">{msg.text}</p>
                        <span className={`text-[9px] block mt-1 text-right ${msg.sender === 'me' ? 'text-primary-100' : 'text-gray-400'}`}>{msg.time}</span>
                     </div>
@@ -164,9 +168,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
            </div>
 
            {/* Input Area */}
-           <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-gray-100 flex gap-2 items-end">
+           <form onSubmit={handleSendMessage} className="p-3 bg-white dark:bg-dark-900 border-t border-gray-100 dark:border-dark-800 flex gap-2 items-end">
               <textarea 
-                 className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 transition-colors resize-none max-h-24 custom-scrollbar"
+                 className="flex-1 bg-gray-50 dark:bg-dark-800 border border-gray-200 dark:border-dark-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 transition-colors resize-none max-h-24 custom-scrollbar dark:text-white"
                  placeholder="اكتب ملاحظاتك أو استفسارك هنا..."
                  rows={1}
                  value={newMessage}
@@ -194,7 +198,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
   // --- View: Dashboard (All Projects) ---
   if (view === 'dashboard') {
     return (
-      <div className="min-h-screen bg-gray-50 font-cairo text-right" dir="rtl">
+      <div className="min-h-screen bg-gray-50 dark:bg-dark-950 font-cairo text-right transition-colors" dir="rtl">
         {/* Header */}
         <header className="bg-primary-900 text-white shadow-lg sticky top-0 z-20">
           <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
@@ -220,21 +224,21 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
         <main className="max-w-7xl mx-auto px-4 py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
              <div>
-                <h2 className="text-2xl font-bold text-gray-800">مشاريعي</h2>
-                <p className="text-gray-500 mt-1">قائمة بجميع المشاريع الخاصة بك وحالتها الحالية</p>
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-white">مشاريعي</h2>
+                <p className="text-gray-500 dark:text-gray-400 mt-1">قائمة بجميع المشاريع الخاصة بك وحالتها الحالية</p>
              </div>
-             <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-100 text-sm font-bold text-gray-600">
+             <div className="bg-white dark:bg-dark-900 px-4 py-2 rounded-lg shadow-sm border border-gray-100 dark:border-dark-800 text-sm font-bold text-gray-600 dark:text-gray-300">
                 عدد المشاريع: {myProjects.length}
              </div>
            </div>
 
            {myProjects.length === 0 ? (
-             <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-200">
-                <div className="bg-gray-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Briefcase className="text-gray-400 w-10 h-10" />
+             <div className="text-center py-20 bg-white dark:bg-dark-900 rounded-3xl shadow-sm border border-gray-200 dark:border-dark-800">
+                <div className="bg-gray-50 dark:bg-dark-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Briefcase className="text-gray-400 dark:text-gray-500 w-10 h-10" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-800">لا توجد مشاريع حالياً</h3>
-                <p className="text-gray-500 mt-2">لم يتم ربط أي مشاريع بحسابك بعد. يرجى التواصل مع الإدارة.</p>
+                <h3 className="text-xl font-bold text-gray-800 dark:text-white">لا توجد مشاريع حالياً</h3>
+                <p className="text-gray-500 dark:text-gray-400 mt-2">لم يتم ربط أي مشاريع بحسابك بعد. يرجى التواصل مع الإدارة.</p>
              </div>
            ) : (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -242,24 +246,24 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
                   <div 
                     key={project.id} 
                     onClick={() => handleOpenProject(project)}
-                    className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-primary-200 hover:-translate-y-1 transition-all duration-300 cursor-pointer group flex flex-col h-full overflow-hidden"
+                    className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 hover:shadow-xl hover:border-primary-200 dark:hover:border-primary-900 hover:-translate-y-1 transition-all duration-300 cursor-pointer group flex flex-col h-full overflow-hidden"
                   >
                     <div className="p-6 flex-1">
                       <div className="flex justify-between items-start mb-4">
                         {getStatusBadge(project.status)}
-                        <span className="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded">#{project.id}</span>
+                        <span className="text-xs text-gray-400 font-mono bg-gray-50 dark:bg-dark-800 px-2 py-1 rounded">#{project.id}</span>
                       </div>
                       
-                      <h3 className="text-xl font-bold text-gray-800 mb-2 group-hover:text-primary-600 transition-colors">
+                      <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                         {project.name}
                       </h3>
                       
                       <div className="space-y-3 mt-4">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <MapPin size={16} className="text-gray-400 flex-shrink-0" />
                           <span className="truncate">{project.location}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <Calendar size={16} className="text-gray-400 flex-shrink-0" />
                           <span>تاريخ البدء: {project.startDate}</span>
                         </div>
@@ -268,10 +272,10 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
                       {project.status !== ProjectStatus.PROPOSED && (
                         <div className="mt-6">
                           <div className="flex justify-between text-xs mb-1">
-                            <span className="text-gray-500 font-bold">نسبة الإنجاز</span>
-                            <span className="font-bold text-primary-700">{project.progress}%</span>
+                            <span className="text-gray-500 dark:text-gray-400 font-bold">نسبة الإنجاز</span>
+                            <span className="font-bold text-primary-700 dark:text-primary-400">{project.progress}%</span>
                           </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="w-full bg-gray-100 dark:bg-dark-800 rounded-full h-2 overflow-hidden">
                             <div 
                               className={`h-full rounded-full transition-all duration-1000 ease-out ${project.status === ProjectStatus.STOPPED ? 'bg-red-400' : 'bg-primary-500'}`} 
                               style={{ width: `${project.progress}%` }}
@@ -281,9 +285,9 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
                       )}
                     </div>
                     
-                    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center group-hover:bg-primary-50 transition-colors">
-                      <span className="text-xs text-gray-600 font-bold group-hover:text-primary-700">عرض التفاصيل والملفات</span>
-                      <div className="bg-white p-1.5 rounded-full text-gray-400 group-hover:text-primary-600 shadow-sm transition-colors">
+                    <div className="px-6 py-4 bg-gray-50 dark:bg-dark-800 border-t border-gray-100 dark:border-dark-700 flex justify-between items-center group-hover:bg-primary-50 dark:group-hover:bg-primary-900/20 transition-colors">
+                      <span className="text-xs text-gray-600 dark:text-gray-300 font-bold group-hover:text-primary-700 dark:group-hover:text-primary-300">عرض التفاصيل والملفات</span>
+                      <div className="bg-white dark:bg-dark-900 p-1.5 rounded-full text-gray-400 group-hover:text-primary-600 shadow-sm transition-colors">
                         <ChevronLeft size={16} />
                       </div>
                     </div>
@@ -305,7 +309,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
                       selectedProject.type === ProjectType.EXECUTION;
 
     return (
-      <div className="min-h-screen bg-gray-50 font-cairo text-right" dir="rtl">
+      <div className="min-h-screen bg-gray-50 dark:bg-dark-950 font-cairo text-right transition-colors" dir="rtl">
         {/* Header */}
         <header className="bg-primary-900 text-white shadow-md sticky top-0 z-20">
           <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
@@ -339,14 +343,14 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
           
           {/* IMPORTANT: Fund Low Alert Banner */}
           {isFundLow && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-r-xl shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4">
+              <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-6 rounded-r-xl shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4">
                   <div className="flex items-center gap-4">
-                      <div className="p-3 bg-red-100 rounded-full text-red-600">
+                      <div className="p-3 bg-red-100 dark:bg-red-900/40 rounded-full text-red-600 dark:text-red-400">
                           <AlertTriangle size={32} />
                       </div>
                       <div>
-                          <h3 className="text-xl font-bold text-red-800">تنبيه هام: رصيد المشروع منخفض</h3>
-                          <p className="text-red-700 mt-1">
+                          <h3 className="text-xl font-bold text-red-800 dark:text-red-300">تنبيه هام: رصيد المشروع منخفض</h3>
+                          <p className="text-red-700 dark:text-red-400 mt-1">
                               الرصيد المخصص لمصاريف الورشة وصل للحد الأدنى. يرجى المبادرة بدفع دفعة جديدة لضمان استمرارية العمل في الموقع دون توقف.
                           </p>
                       </div>
@@ -362,7 +366,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
           )}
 
           {/* Project Status Banner */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden">
             <div className={`p-8 text-white relative overflow-hidden ${
               selectedProject.status === ProjectStatus.STOPPED ? 'bg-gradient-to-l from-red-600 to-red-800' :
               selectedProject.status === ProjectStatus.PROPOSED ? 'bg-gradient-to-l from-yellow-500 to-yellow-700' :
@@ -396,7 +400,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
             {selectedProject.status !== ProjectStatus.PROPOSED && (
               <div className="p-8">
                 {/* Progress Bar */}
-                <div className="w-full bg-gray-100 rounded-full h-4 mb-8 overflow-hidden shadow-inner">
+                <div className="w-full bg-gray-100 dark:bg-dark-800 rounded-full h-4 mb-8 overflow-hidden shadow-inner">
                   <div 
                     className={`h-full rounded-full transition-all duration-1000 ${selectedProject.status === ProjectStatus.STOPPED ? 'bg-red-500' : 'bg-primary-600'}`}
                     style={{ width: `${selectedProject.progress}%` }}
@@ -405,26 +409,26 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
 
                 {/* Stats */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-                    <p className="text-gray-500 text-sm mb-1 font-bold">قيمة العقد التقريبية</p>
-                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(selectedProject.budget * 1.2)}</p> 
+                  <div className="bg-gray-50 dark:bg-dark-800 p-6 rounded-2xl border border-gray-100 dark:border-dark-700">
+                    <p className="text-gray-500 dark:text-gray-400 text-sm mb-1 font-bold">قيمة العقد التقريبية</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-white">{formatCurrency(selectedProject.budget * 1.2)}</p> 
                   </div>
-                  <div className="bg-green-50 p-6 rounded-2xl border border-green-100">
-                    <p className="text-green-600 text-sm mb-1 font-bold">إجمالي المدفوع</p>
-                    <p className="text-2xl font-bold text-green-700">{formatCurrency(selectedProject.revenue)}</p>
+                  <div className="bg-green-50 dark:bg-green-900/20 p-6 rounded-2xl border border-green-100 dark:border-green-900/30">
+                    <p className="text-green-600 dark:text-green-400 text-sm mb-1 font-bold">إجمالي المدفوع</p>
+                    <p className="text-2xl font-bold text-green-700 dark:text-green-300">{formatCurrency(selectedProject.revenue)}</p>
                   </div>
-                  <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
-                    <p className="text-blue-600 text-sm mb-1 font-bold">المتبقي للدفع</p>
-                    <p className="text-2xl font-bold text-blue-700">{formatCurrency((selectedProject.budget * 1.2) - selectedProject.revenue)}</p>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-900/30">
+                    <p className="text-blue-600 dark:text-blue-400 text-sm mb-1 font-bold">المتبقي للدفع</p>
+                    <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{formatCurrency((selectedProject.budget * 1.2) - selectedProject.revenue)}</p>
                   </div>
                 </div>
               </div>
             )}
 
             {selectedProject.status === ProjectStatus.PROPOSED && (
-               <div className="p-8 text-center bg-yellow-50">
-                  <h3 className="text-yellow-800 font-bold text-lg">هذا المشروع مقترح</h3>
-                  <p className="text-yellow-700 mt-2">المشروع حالياً في مرحلة الدراسة والموافقة. سيتم تحديث البيانات المالية ونسب الإنجاز فور الاعتماد.</p>
+               <div className="p-8 text-center bg-yellow-50 dark:bg-yellow-900/20">
+                  <h3 className="text-yellow-800 dark:text-yellow-300 font-bold text-lg">هذا المشروع مقترح</h3>
+                  <p className="text-yellow-700 dark:text-yellow-400 mt-2">المشروع حالياً في مرحلة الدراسة والموافقة. سيتم تحديث البيانات المالية ونسب الإنجاز فور الاعتماد.</p>
                </div>
             )}
           </div>
@@ -432,13 +436,13 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Invoices Section */}
             <div className="lg:col-span-2 space-y-6">
-              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <FileText className="text-primary-600" />
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <FileText className="text-primary-600 dark:text-primary-400" />
                 الدفعات المالية والفواتير
               </h3>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden">
                   <table className="w-full text-sm text-right">
-                    <thead className="bg-gray-50 text-gray-500 font-bold border-b border-gray-100">
+                    <thead className="bg-gray-50 dark:bg-dark-800 text-gray-500 dark:text-gray-400 font-bold border-b border-gray-100 dark:border-dark-700">
                       <tr>
                         <th className="px-6 py-4">رقم الفاتورة</th>
                         <th className="px-6 py-4">البيان</th>
@@ -447,15 +451,15 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
                         <th className="px-6 py-4">الحالة</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
                       {projectInvoices.map(inv => (
-                        <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 font-bold text-gray-800">{inv.invoiceNumber}</td>
-                          <td className="px-6 py-4 text-gray-600">{inv.category}</td>
-                          <td className="px-6 py-4 text-gray-500 font-mono">{inv.date}</td>
-                          <td className="px-6 py-4 font-bold text-primary-700">{formatCurrency(inv.amount)}</td>
+                        <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
+                          <td className="px-6 py-4 font-bold text-gray-800 dark:text-gray-200">{inv.invoiceNumber}</td>
+                          <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{inv.category}</td>
+                          <td className="px-6 py-4 text-gray-500 dark:text-gray-400 font-mono">{inv.date}</td>
+                          <td className="px-6 py-4 font-bold text-primary-700 dark:text-primary-400">{formatCurrency(inv.amount)}</td>
                           <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${inv.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${inv.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'}`}>
                               {inv.status === 'Paid' ? <CheckCircle size={12} /> : null}
                               {inv.status === 'Paid' ? 'مدفوع' : 'مستحق'}
                             </span>
@@ -463,7 +467,7 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
                         </tr>
                       ))}
                       {projectInvoices.length === 0 && (
-                        <tr><td colSpan={5} className="p-10 text-center text-gray-400">لا توجد فواتير مسجلة لهذا المشروع</td></tr>
+                        <tr><td colSpan={5} className="p-10 text-center text-gray-400 dark:text-gray-500">لا توجد فواتير مسجلة لهذا المشروع</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -472,69 +476,69 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
 
             {/* Files & Help Section */}
             <div className="space-y-6">
-              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Image className="text-primary-600" />
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <Image className="text-primary-600 dark:text-primary-400" />
                 ألبوم المشروع والمرفقات
               </h3>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 p-6">
                   <div className="space-y-4">
-                    <div className="flex items-center gap-3 p-3 border border-gray-100 rounded-xl hover:bg-gray-50 hover:border-primary-200 transition-all cursor-pointer group">
-                      <div className="w-12 h-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                    <div className="flex items-center gap-3 p-3 border border-gray-100 dark:border-dark-700 rounded-xl hover:bg-gray-50 dark:hover:bg-dark-800 hover:border-primary-200 dark:hover:border-primary-900 transition-all cursor-pointer group">
+                      <div className="w-12 h-12 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <FileText size={24} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-gray-800 truncate">ملف العقد.pdf</p>
+                        <p className="text-sm font-bold text-gray-800 dark:text-white truncate">ملف العقد.pdf</p>
                         <p className="text-xs text-gray-400">2.4 MB • تم الرفع</p>
                       </div>
-                      <Download size={20} className="text-gray-300 group-hover:text-primary-600 transition-colors" />
+                      <Download size={20} className="text-gray-300 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors" />
                     </div>
 
-                    <div className="flex items-center gap-3 p-3 border border-gray-100 rounded-xl hover:bg-gray-50 hover:border-primary-200 transition-all cursor-pointer group">
-                      <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                    <div className="flex items-center gap-3 p-3 border border-gray-100 dark:border-dark-700 rounded-xl hover:bg-gray-50 dark:hover:bg-dark-800 hover:border-primary-200 dark:hover:border-primary-900 transition-all cursor-pointer group">
+                      <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/20 text-blue-500 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                         <Image size={24} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-gray-800 truncate">المخططات الهندسية</p>
+                        <p className="text-sm font-bold text-gray-800 dark:text-white truncate">المخططات الهندسية</p>
                         <p className="text-xs text-gray-400">15 MB • تم الرفع</p>
                       </div>
-                      <Download size={20} className="text-gray-300 group-hover:text-primary-600 transition-colors" />
+                      <Download size={20} className="text-gray-300 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors" />
                     </div>
                   </div>
                   <button 
                     onClick={() => alert("سيتم فتح معرض الملفات قريباً")}
-                    className="w-full mt-4 text-primary-600 text-sm font-bold hover:bg-primary-50 py-2 rounded-lg transition-colors"
+                    className="w-full mt-4 text-primary-600 dark:text-primary-400 text-sm font-bold hover:bg-primary-50 dark:hover:bg-primary-900/20 py-2 rounded-lg transition-colors"
                   >
                     عرض كل الملفات
                   </button>
               </div>
 
-              <div className="bg-primary-50 rounded-2xl p-6 border border-primary-100">
-                  <h4 className="font-bold text-primary-900 mb-2 text-lg">هل تحتاج مساعدة؟</h4>
-                  <p className="text-sm text-primary-700 mb-4">فريقنا الهندسي جاهز للإجابة على استفساراتك.</p>
+              <div className="bg-primary-50 dark:bg-primary-900/10 rounded-2xl p-6 border border-primary-100 dark:border-primary-900/30">
+                  <h4 className="font-bold text-primary-900 dark:text-primary-300 mb-2 text-lg">هل تحتاج مساعدة؟</h4>
+                  <p className="text-sm text-primary-700 dark:text-primary-400 mb-4">فريقنا الهندسي جاهز للإجابة على استفساراتك.</p>
                   <div className="space-y-3">
                     <button 
                         onClick={() => setIsChatOpen(true)}
-                        className="flex items-center gap-3 text-sm font-bold text-gray-700 bg-white p-3 rounded-xl w-full border border-primary-100 hover:border-primary-300 hover:shadow-md transition-all"
+                        className="flex items-center gap-3 text-sm font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-dark-800 p-3 rounded-xl w-full border border-primary-100 dark:border-dark-700 hover:border-primary-300 hover:shadow-md transition-all"
                     >
-                        <div className="bg-primary-100 p-2 rounded-lg text-primary-600">
+                        <div className="bg-primary-100 dark:bg-primary-900/30 p-2 rounded-lg text-primary-600 dark:text-primary-400">
                             <MessageCircle size={18} />
                         </div>
                         <span>محادثة فورية / إرسال ملاحظة</span>
                     </button>
                     <a 
                         href="tel:+966555555555" 
-                        className="flex items-center gap-3 text-sm font-bold text-gray-700 bg-white p-3 rounded-xl w-full border border-primary-100 hover:border-primary-300 hover:shadow-md transition-all"
+                        className="flex items-center gap-3 text-sm font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-dark-800 p-3 rounded-xl w-full border border-primary-100 dark:border-dark-700 hover:border-primary-300 hover:shadow-md transition-all"
                     >
-                        <div className="bg-primary-100 p-2 rounded-lg text-primary-600">
+                        <div className="bg-primary-100 dark:bg-primary-900/30 p-2 rounded-lg text-primary-600 dark:text-primary-400">
                             <Phone size={18} />
                         </div>
                         <span>اتصال بالمهندس المشرف</span>
                     </a>
                     <a 
                         href="mailto:support@noah.com"
-                        className="flex items-center gap-3 text-sm font-bold text-gray-700 bg-white p-3 rounded-xl w-full border border-primary-100 hover:border-primary-300 hover:shadow-md transition-all"
+                        className="flex items-center gap-3 text-sm font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-dark-800 p-3 rounded-xl w-full border border-primary-100 dark:border-dark-700 hover:border-primary-300 hover:shadow-md transition-all"
                     >
-                        <div className="bg-primary-100 p-2 rounded-lg text-primary-600">
+                        <div className="bg-primary-100 dark:bg-primary-900/30 p-2 rounded-lg text-primary-600 dark:text-primary-400">
                             <Mail size={18} />
                         </div>
                         <span>إرسال بريد إلكتروني</span>

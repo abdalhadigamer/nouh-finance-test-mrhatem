@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
 import { formatCurrency } from '../services/dataService';
-import { Project, ProjectStatus, ProjectType, ContractType } from '../types';
+import { Project, ProjectStatus, ProjectType, ContractType, User } from '../types';
 import { MOCK_CLIENTS } from '../constants';
-import { Plus, Search, MapPin, Calendar, DollarSign, LayoutGrid, List, Edit3, ArrowRightCircle, CheckCircle, Percent, Coins, Users } from 'lucide-react';
+import { logActivity } from '../services/auditService';
+import { Plus, Search, MapPin, DollarSign, Edit3, ArrowRightCircle, CheckCircle, Percent, Coins, Users, PenTool, Hammer, FileText, AlertCircle } from 'lucide-react';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
 
@@ -11,11 +12,12 @@ interface ProjectsProps {
   projects: Project[];
   onUpdateProjects: (projects: Project[]) => void;
   onViewDetails?: (project: Project) => void;
+  currentUser?: User;
 }
 
-const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewDetails }) => {
+const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewDetails, currentUser }) => {
   const [filter, setFilter] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'board'>('board');
+  const [activeTab, setActiveTab] = useState<ProjectStatus>(ProjectStatus.DESIGN);
   
   // Add/Edit Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,6 +42,15 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
     startDate: new Date().toISOString().split('T')[0]
   });
 
+  // --- Tabs Configuration ---
+  const tabs = [
+    { id: ProjectStatus.DESIGN, label: 'مرحلة التصميم', icon: PenTool, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+    { id: ProjectStatus.EXECUTION, label: 'مرحلة التنفيذ', icon: Hammer, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    { id: ProjectStatus.PROPOSED, label: 'مشاريع مقترحة', icon: FileText, color: 'text-yellow-600', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
+    { id: ProjectStatus.STOPPED, label: 'مشاريع متوقفة', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
+    { id: ProjectStatus.DELIVERED, label: 'تم التسليم', icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/20' },
+  ];
+
   // --- Handlers for Add/Edit Project ---
 
   const openNewProjectModal = () => {
@@ -49,7 +60,7 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
       clientId: '',
       budget: 0,
       location: '',
-      status: ProjectStatus.DESIGN,
+      status: activeTab, // Create project in the current tab by default
       type: ProjectType.DESIGN,
       contractType: ContractType.PERCENTAGE,
       companyPercentage: 0,
@@ -76,6 +87,28 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
   const handleSaveProject = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // --- COMPREHENSIVE VALIDATION ---
+    const errors: string[] = [];
+
+    if (!currentProject.name?.trim()) {
+        errors.push("اسم المشروع مطلوب.");
+    }
+    if (!currentProject.clientId) {
+        errors.push("يرجى اختيار العميل.");
+    }
+    if (!currentProject.budget || currentProject.budget <= 0) {
+        errors.push("يرجى إدخال قيمة العقد (الميزانية) بشكل صحيح.");
+    }
+    if (currentProject.contractType === ContractType.LUMP_SUM && (!currentProject.agreedLaborBudget || currentProject.agreedLaborBudget <= 0)) {
+        errors.push("في مشاريع المبلغ المقطوع، يرجى تحديد ميزانية الأجور المتفق عليها لضبط التكاليف.");
+    }
+
+    if (errors.length > 0) {
+        alert("عذراً، لا يمكن حفظ المشروع. يرجى تصحيح الأخطاء التالية:\n\n" + errors.map(e => "• " + e).join("\n"));
+        return;
+    }
+    // --------------------------------
+
     let finalClientName = currentProject.clientName || 'عميل غير مسجل';
     let finalClientUsername = '';
     
@@ -87,7 +120,6 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
        }
     }
 
-    // Default contract type if not set
     const finalContractType = currentProject.contractType || ContractType.PERCENTAGE;
 
     if (isEditMode && currentProject.id) {
@@ -101,6 +133,9 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
             } as Project : p
         );
         onUpdateProjects(updatedProjects);
+        if (currentUser) {
+            logActivity(currentUser, 'UPDATE', 'Project', `تحديث بيانات المشروع: ${currentProject.name}`, currentProject.id);
+        }
     } else {
         const project: Project = {
             ...currentProject as Project,
@@ -114,17 +149,20 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
             expenses: 0
         };
         onUpdateProjects([project, ...projects]);
+        if (currentUser) {
+            logActivity(currentUser, 'CREATE', 'Project', `إنشاء مشروع جديد: ${project.name}`, project.id);
+        }
     }
 
     setIsModalOpen(false);
   };
 
-  // --- Handlers for Moving Stage (Manual Button) ---
+  // --- Handlers for Moving Stage ---
 
   const openMoveStageModal = (e: React.MouseEvent, project: Project) => {
       e.stopPropagation();
       setProjectToMove(project);
-      setTargetStage(project.status); // Default to current
+      setTargetStage(project.status); 
       setIsMoveModalOpen(true);
   };
 
@@ -139,8 +177,7 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
 
       const updatedProjects = projects.map(p => {
           if (p.id === projectToMove.id) {
-              // Auto-Upgrade Logic: Design -> Execution
-              // Automatically switch the project TYPE to unlock features
+              // Auto-Upgrade Logic
               if (p.status === ProjectStatus.DESIGN && targetStage === ProjectStatus.EXECUTION) {
                   return { 
                       ...p, 
@@ -154,15 +191,32 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
       });
 
       onUpdateProjects(updatedProjects);
+      if (currentUser) {
+          logActivity(currentUser, 'UPDATE', 'Project', `نقل المشروع ${projectToMove.name} من ${projectToMove.status} إلى ${targetStage}`, projectToMove.id);
+      }
       setIsMoveModalOpen(false);
       setProjectToMove(null);
   };
 
-  // --- Render Helpers ---
+  // --- Filtering Logic ---
 
-  const filteredProjects = projects.filter(p => 
-    p.name.includes(filter) || p.clientName.includes(filter) || p.location.includes(filter)
-  );
+  const getFilteredProjects = () => {
+      return projects.filter(p => {
+          const matchesFilter = p.name.includes(filter) || p.clientName.includes(filter) || p.location.includes(filter);
+          
+          let matchesTab = false;
+          if (activeTab === ProjectStatus.STOPPED) {
+              // Include Delayed in Stopped tab
+              matchesTab = p.status === ProjectStatus.STOPPED || p.status === ProjectStatus.DELAYED;
+          } else {
+              matchesTab = p.status === activeTab;
+          }
+
+          return matchesFilter && matchesTab;
+      });
+  };
+
+  const filteredProjects = getFilteredProjects();
 
   const getStatusColor = (status: ProjectStatus) => {
     switch(status) {
@@ -176,79 +230,6 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
     }
   };
 
-  const renderColumn = (title: string, status: ProjectStatus | 'OTHER', icon: React.ReactNode, count: number) => {
-    const columnProjects = filteredProjects.filter(p => {
-        if (status === 'OTHER') {
-            return ![ProjectStatus.DESIGN, ProjectStatus.EXECUTION].includes(p.status);
-        }
-        return p.status === status;
-    });
-
-    return (
-      <div className="bg-gray-50 dark:bg-dark-900 rounded-2xl p-4 flex flex-col h-full border border-gray-100 dark:border-dark-800 min-h-[300px]">
-        <div className="flex justify-between items-center mb-4">
-           <h3 className="font-bold text-gray-700 dark:text-gray-200 flex items-center gap-2">
-             {icon}
-             {title}
-           </h3>
-           <span className="bg-white dark:bg-dark-800 px-2 py-1 rounded-md text-xs font-bold shadow-sm dark:text-gray-300">{count}</span>
-        </div>
-        <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar">
-           {columnProjects.map(project => (
-             <div 
-               key={project.id}
-               onClick={() => handleProjectClick(project)}
-               className="bg-white dark:bg-dark-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-dark-700 hover:shadow-md cursor-pointer transition-all group relative"
-             >
-                <div className="flex justify-between items-start mb-2">
-                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${getStatusColor(project.status)}`}>{project.status}</span>
-                   <div className="flex gap-1 z-10">
-                       <button 
-                         onClick={(e) => openMoveStageModal(e, project)}
-                         className="text-gray-400 hover:text-green-600 dark:hover:text-green-400 p-1 rounded-md hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
-                         title="نقل المشروع لمرحلة أخرى"
-                       >
-                         <ArrowRightCircle size={16} />
-                       </button>
-                       <button 
-                         onClick={(e) => openEditProjectModal(e, project)}
-                         className="text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors"
-                         title="تعديل"
-                       >
-                         <Edit3 size={16} />
-                       </button>
-                   </div>
-                </div>
-                <h4 className="font-bold text-gray-800 dark:text-gray-100 mb-1">{project.name}</h4>
-                <div className="flex justify-between items-center mb-3">
-                   <p className="text-xs text-gray-500 dark:text-gray-400">{project.clientName}</p>
-                   <span className="text-[10px] bg-gray-100 dark:bg-dark-900 px-1.5 rounded text-gray-500 dark:text-gray-400">{project.type}</span>
-                </div>
-                
-                <div className="w-full bg-gray-100 dark:bg-dark-900 rounded-full h-1.5 mb-3">
-                   <div className="bg-primary-600 h-1.5 rounded-full" style={{ width: `${project.progress}%` }}></div>
-                </div>
-
-                <div className="flex justify-between items-center pt-3 border-t border-gray-50 dark:border-dark-700">
-                   <span className="text-xs font-bold text-gray-600 dark:text-gray-400">{formatCurrency(project.budget)}</span>
-                   <div className="flex -space-x-2 space-x-reverse">
-                      <div className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300 flex items-center justify-center text-[10px] font-bold border-2 border-white dark:border-dark-800">
-                         {project.progress}%
-                      </div>
-                   </div>
-                </div>
-             </div>
-           ))}
-           {columnProjects.length === 0 && (
-             <div className="text-center py-10 text-gray-400 dark:text-gray-600 text-sm border-2 border-dashed border-gray-200 dark:border-dark-700 rounded-xl">
-               لا توجد مشاريع
-             </div>
-           )}
-        </div>
-      </div>
-    );
-  };
-
   const clientOptions = MOCK_CLIENTS.map(c => ({ value: c.id, label: c.name }));
 
   return (
@@ -256,31 +237,41 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">إدارة المشاريع</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">لوحة التحكم بالمشاريع ومراحل التنفيذ</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">متابعة سير العمل والمراحل المختلفة للمشاريع</p>
         </div>
-        <div className="flex gap-3">
-          <div className="bg-white dark:bg-dark-900 p-1 rounded-lg border border-gray-200 dark:border-dark-800 flex">
-             <button 
-               onClick={() => setViewMode('list')}
-               className={`p-2 rounded-md transition-colors ${viewMode === 'list' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}
-             >
-               <List size={20} />
-             </button>
-             <button 
-               onClick={() => setViewMode('board')}
-               className={`p-2 rounded-md transition-colors ${viewMode === 'board' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}
-             >
-               <LayoutGrid size={20} />
-             </button>
-          </div>
-          <button 
-            onClick={openNewProjectModal}
-            className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-primary-500/20"
-          >
-            <Plus size={20} />
-            <span className="font-bold">مشروع جديد</span>
-          </button>
-        </div>
+        <button 
+          onClick={openNewProjectModal}
+          className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-primary-500/20"
+        >
+          <Plus size={20} />
+          <span className="font-bold">مشروع جديد</span>
+        </button>
+      </div>
+
+      {/* Tabs Navigation */}
+      <div className="bg-white dark:bg-dark-900 p-1.5 rounded-2xl border border-gray-100 dark:border-dark-800 flex overflow-x-auto">
+         {tabs.map(tab => {
+             const Icon = tab.icon;
+             const isActive = activeTab === tab.id;
+             const count = projects.filter(p => {
+                 if (tab.id === ProjectStatus.STOPPED) return p.status === ProjectStatus.STOPPED || p.status === ProjectStatus.DELAYED;
+                 return p.status === tab.id;
+             }).length;
+
+             return (
+                <button 
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex-1 min-w-[140px] py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${isActive ? `${tab.bg} ${tab.color} ring-1 ring-inset ring-current` : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}
+                >
+                    <Icon size={18} />
+                    {tab.label}
+                    <span className={`bg-white dark:bg-dark-950 px-1.5 py-0.5 rounded-md text-xs shadow-sm ${isActive ? tab.color : 'text-gray-400'}`}>
+                        {count}
+                    </span>
+                </button>
+             );
+         })}
       </div>
 
       {/* Filters */}
@@ -297,16 +288,8 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
         </div>
       </div>
 
-      {viewMode === 'board' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[calc(100vh-280px)]">
-           {renderColumn('مرحلة التصميم', ProjectStatus.DESIGN, <div className="w-3 h-3 rounded-full bg-purple-500"></div>, filteredProjects.filter(p => p.status === ProjectStatus.DESIGN).length)}
-           {renderColumn('قيد التنفيذ', ProjectStatus.EXECUTION, <div className="w-3 h-3 rounded-full bg-blue-500"></div>, filteredProjects.filter(p => p.status === ProjectStatus.EXECUTION).length)}
-           {renderColumn('أخرى (منتهي/مؤجل)', 'OTHER', <div className="w-3 h-3 rounded-full bg-green-500"></div>, filteredProjects.filter(p => ![ProjectStatus.DESIGN, ProjectStatus.EXECUTION].includes(p.status)).length)}
-        </div>
-      )}
-
-      {viewMode === 'list' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      {/* Projects Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
           {filteredProjects.map((project) => (
             <div 
                 key={project.id} 
@@ -316,7 +299,7 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
               <div className="p-6 flex-1">
                 <div className="flex justify-between items-start mb-4">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(project.status)}`}>
-                    {project.status}
+                    {project.status === ProjectStatus.DELAYED ? 'مؤجل' : project.status}
                   </span>
                   <div className="flex gap-1 z-10">
                        <button 
@@ -350,23 +333,33 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
                   </div>
                 </div>
   
-                <div className="mt-6">
-                   <div className="flex justify-between text-xs mb-1 text-gray-600 dark:text-gray-400">
-                     <span>الإنجاز</span>
-                     <span className="font-bold">{project.progress}%</span>
-                   </div>
-                   <div className="w-full bg-gray-100 dark:bg-dark-800 rounded-full h-2">
-                     <div 
-                      className="h-2 rounded-full bg-primary-600" 
-                      style={{ width: `${project.progress}%` }}
-                     ></div>
-                   </div>
-                </div>
+                {activeTab !== ProjectStatus.PROPOSED && (
+                    <div className="mt-6">
+                    <div className="flex justify-between text-xs mb-1 text-gray-600 dark:text-gray-400">
+                        <span>الإنجاز</span>
+                        <span className="font-bold">{project.progress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-dark-800 rounded-full h-2">
+                        <div 
+                        className={`h-2 rounded-full ${project.status === ProjectStatus.STOPPED ? 'bg-red-500' : 'bg-primary-600'}`} 
+                        style={{ width: `${project.progress}%` }}
+                        ></div>
+                    </div>
+                    </div>
+                )}
               </div>
             </div>
           ))}
-        </div>
-      )}
+          {filteredProjects.length === 0 && (
+              <div className="col-span-full py-20 text-center text-gray-400 dark:text-gray-600 border-2 border-dashed border-gray-200 dark:border-dark-700 rounded-2xl">
+                  <Hammer size={48} className="mx-auto mb-4 opacity-20" />
+                  <p className="font-bold">لا توجد مشاريع في هذه المرحلة</p>
+                  <button onClick={openNewProjectModal} className="mt-4 text-primary-600 hover:underline text-sm">
+                      إضافة مشروع جديد هنا
+                  </button>
+              </div>
+          )}
+      </div>
 
       {/* Add/Edit Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditMode ? "تعديل تفاصيل المشروع" : "إضافة مشروع جديد"}>
@@ -416,7 +409,7 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onViewD
                 </div>
             </div>
 
-            {/* NEW: Contract Type & Pricing */}
+            {/* Contract Type & Pricing */}
             <div className="bg-gray-50 dark:bg-dark-800 p-4 rounded-xl border border-gray-200 dark:border-dark-700 space-y-4">
                 <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">

@@ -1,28 +1,46 @@
 
 import React, { useEffect, useState } from 'react';
 import { getRecentTransactions, formatCurrency } from '../services/dataService';
-import { Transaction, TransactionType, EmployeeType } from '../types';
-import { MOCK_EMPLOYEES, MOCK_PROJECTS } from '../constants';
+import { Transaction, TransactionType, EmployeeType, Invoice, InvoiceType, StatementRow, InvestorTransaction, TrustTransaction, User } from '../types';
+import { MOCK_EMPLOYEES, MOCK_PROJECTS, MOCK_INVOICES, MOCK_INVESTORS, MOCK_TRUSTEES, MOCK_INVESTOR_TRANSACTIONS, MOCK_TRUST_TRANSACTIONS, MOCK_TRANSACTIONS } from '../constants';
+import { logActivity } from '../services/auditService';
 import { 
-  Download, PlusCircle, ArrowUpRight, ArrowDownLeft, RefreshCcw, 
-  Paperclip, Check, Upload, Camera, Search, TrendingDown, TrendingUp, 
-  HardHat, CheckCircle, Clock, Edit, FileText, Briefcase, X
+  PlusCircle, ArrowUpRight, ArrowDownLeft, RefreshCcw, 
+  Check, Camera, Search, TrendingDown, TrendingUp, 
+  HardHat, CheckCircle, Clock, Edit, FileText, Briefcase, X, Plus, User as UserIcon, Shield, Undo2, Link
 } from 'lucide-react';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
 
-const Transactions: React.FC = () => {
+interface TransactionsProps {
+    selectedYear?: number;
+    currentUser?: User; // Passed from App to know who is adding
+}
+
+type ReceiptSourceType = 'client' | 'investor' | 'trustee' | 'refund' | 'other';
+
+const Transactions: React.FC<TransactionsProps> = ({ selectedYear, currentUser }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [activeTab, setActiveTab] = useState<'expenses' | 'revenues' | 'transfers'>('expenses');
   const [expenseSubTab, setExpenseSubTab] = useState<'completed' | 'pending'>('completed');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Modal State
+  // Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false); 
+  const [receiptSourceType, setReceiptSourceType] = useState<ReceiptSourceType>('client');
+  const [selectedSpecialty, setSelectedSpecialty] = useState<string>(''); 
+  
+  // Quick Add Item State
+  const [isAddingNewItem, setIsAddingNewItem] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+
+  // Settlement State
+  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
+  const [txnToSettle, setTxnToSettle] = useState<Transaction | null>(null);
+  const [settleDate, setSettleDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const [newTxn, setNewTxn] = useState<Partial<Transaction>>({
-    id: undefined,
     amount: 0,
     currency: 'USD',
     description: '',
@@ -30,107 +48,208 @@ const Transactions: React.FC = () => {
     toAccount: '',
     type: TransactionType.PAYMENT,
     recipientType: 'Other',
-    projectId: '',
-    attachmentUrl: ''
+    projectId: 'General',
+    statementItemId: '',
+    hasLinkedInvoice: false 
   });
 
-  // Settlement Modal State
-  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
-  const [txnToSettle, setTxnToSettle] = useState<Transaction | null>(null);
-  const [settleDate, setSettleDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [settleFromAccount, setSettleFromAccount] = useState<string>('الخزينة الرئيسية');
-
-  // State for HR Linking
-  const [recipientCategory, setRecipientCategory] = useState<string>(''); 
-
   useEffect(() => {
-    getRecentTransactions().then(setTransactions);
-  }, []);
+    // Ensure we load the latest from the global mock
+    setTransactions([...MOCK_TRANSACTIONS]);
+  }, [isModalOpen, isSettleModalOpen]); // Refresh when modals close
+
+  // --- Validation Logic ---
+  const validateTransaction = () => {
+      const errors: string[] = [];
+      if (!newTxn.amount || newTxn.amount <= 0) errors.push("قيمة المبلغ يجب أن تكون أكبر من 0.");
+      if (!newTxn.description?.trim()) errors.push("يرجى كتابة وصف للحركة.");
+      if (!newTxn.fromAccount && newTxn.type !== TransactionType.RECEIPT) errors.push("يرجى تحديد الحساب المصدر.");
+      if (isAddingNewItem && !newItemName.trim()) errors.push("يرجى كتابة اسم البند الجديد.");
+      if (selectedSpecialty && !newTxn.recipientId && newTxn.type === TransactionType.PAYMENT) errors.push("يرجى اختيار الحرفي.");
+      return errors;
+  };
+
+  // --- Sync Logic (The Brain) ---
+  const syncWithSubLedgers = (txn: Transaction) => {
+      // 1. Investor Sync
+      if (receiptSourceType === 'investor' && txn.recipientId) {
+          const subTxn: InvestorTransaction = {
+              id: `it-sync-${txn.id}`,
+              investorId: txn.recipientId,
+              type: 'Capital_Injection',
+              amount: txn.amount,
+              date: txn.date,
+              notes: `إيداع نقدي (قيد رقم: ${txn.serialNumber}) - ${txn.description}`
+          };
+          MOCK_INVESTOR_TRANSACTIONS.unshift(subTxn);
+      }
+      
+      // 2. Trustee Sync
+      if (receiptSourceType === 'trustee' && txn.recipientId) {
+          const subTxn: TrustTransaction = {
+              id: `tt-sync-${txn.id}`,
+              trusteeId: txn.recipientId,
+              type: 'Deposit',
+              amount: txn.amount,
+              date: txn.date,
+              notes: `إيداع أمانة (قيد رقم: ${txn.serialNumber}) - ${txn.description}`
+          };
+          MOCK_TRUST_TRANSACTIONS.unshift(subTxn);
+      }
+
+      // 3. Project Statement Sync (If new item added)
+      if (isAddingNewItem && newItemName.trim() && txn.projectId) {
+          const project = MOCK_PROJECTS.find(p => p.id === txn.projectId);
+          if (project) {
+              if (!project.statementRows) project.statementRows = [];
+              project.statementRows.push({
+                  id: txn.statementItemId || `stm-${Date.now()}`,
+                  item: newItemName,
+                  notes: 'تمت الإضافة من الحركات المالية'
+              });
+          }
+      }
+
+      // 4. Auto-Invoice Creation
+      if (txn.hasLinkedInvoice && txn.type === TransactionType.PAYMENT) {
+          const placeholderInvoice: Invoice = {
+              id: `inv-auto-${txn.id}`,
+              invoiceNumber: `مسودة - قيد ${txn.serialNumber}`,
+              systemSerial: `REF-${txn.serialNumber}`,
+              date: txn.date,
+              projectId: txn.projectId || 'General',
+              supplierName: txn.toAccount || 'مورد عام',
+              amount: txn.amount,
+              subtotal: txn.amount,
+              totalAmount: txn.amount,
+              discount: 0,
+              items: [],
+              status: txn.status === 'Completed' ? 'Paid' : 'Pending',
+              type: InvoiceType.PURCHASE,
+              category: selectedSpecialty ? `مشتريات ${getSpecialtyLabel(selectedSpecialty)}` : 'مشتريات تلقائية',
+              isClientVisible: false, 
+              notes: `تم توليد هذه الفاتورة تلقائياً لتطابق القيد المالي رقم ${txn.serialNumber}.`
+          };
+          MOCK_INVOICES.unshift(placeholderInvoice);
+      }
+  };
 
   const handleSaveTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validation
-    if (!newTxn.amount || newTxn.amount <= 0) {
-        alert("تنبيه: لا يمكن تسجيل حركة مالية بمبلغ 0. يرجى إدخال المبلغ الصحيح.");
+    const errors = validateTransaction();
+    if (errors.length > 0) {
+        alert("تنبيه:\n" + errors.map(e => "• " + e).join("\n"));
         return;
     }
 
+    // --- Prepare Data ---
     let finalRecipientName = newTxn.toAccount;
-    if (newTxn.recipientId) {
+    let finalFromAccount = newTxn.fromAccount;
+    let finalRecipientType = newTxn.recipientType;
+    
+    // Logic for Receipt Source Names
+    if (newTxn.type === TransactionType.RECEIPT) {
+        if (receiptSourceType === 'client' && newTxn.projectId) {
+            const proj = MOCK_PROJECTS.find(p => p.id === newTxn.projectId);
+            finalFromAccount = proj ? proj.clientName : 'عميل';
+            finalRecipientType = 'Client';
+        } else if (receiptSourceType === 'investor' && newTxn.recipientId) {
+            const inv = MOCK_INVESTORS.find(i => i.id === newTxn.recipientId);
+            finalFromAccount = inv ? inv.name : 'مستثمر';
+            finalRecipientType = 'Investor';
+        } else if (receiptSourceType === 'trustee' && newTxn.recipientId) {
+            const tr = MOCK_TRUSTEES.find(t => t.id === newTxn.recipientId);
+            finalFromAccount = tr ? tr.name : 'صاحب أمانة';
+            finalRecipientType = 'Trustee';
+        }
+    } else if (newTxn.type === TransactionType.PAYMENT && newTxn.recipientId) {
         const emp = MOCK_EMPLOYEES.find(e => e.id === newTxn.recipientId);
         if (emp) finalRecipientName = emp.name;
     }
 
     let finalDescription = newTxn.description || '';
-    let finalToAccount = finalRecipientName;
+    let finalStatementItemId = newTxn.statementItemId;
+    if (isAddingNewItem) {
+        finalStatementItemId = `stm-row-${Date.now()}`;
+        finalDescription = `${finalDescription} - (بند: ${newItemName})`;
+    }
 
-    // Logic: If Creating New AND it's from Workshop -> Pending
+    // --- Serial Number Generation (Distinct Ranges) ---
+    // Receipts: 1000+, Payments: 5000+, Transfers: 9000+
+    let finalSerial = newTxn.serialNumber;
+    if (!isEditMode && !finalSerial) {
+        let baseSerial = 0;
+        
+        if (newTxn.type === TransactionType.RECEIPT) baseSerial = 1000;
+        else if (newTxn.type === TransactionType.PAYMENT) baseSerial = 5000;
+        else if (newTxn.type === TransactionType.TRANSFER) baseSerial = 9000;
+
+        const existingSerials = MOCK_TRANSACTIONS
+            .filter(t => t.type === newTxn.type)
+            .map(t => t.serialNumber || 0);
+            
+        const maxCurrent = existingSerials.length > 0 ? Math.max(...existingSerials) : baseSerial;
+        finalSerial = maxCurrent + 1;
+    }
+
+    // Status Determination
     let status: 'Completed' | 'Pending_Settlement' = newTxn.status || 'Completed';
     if (!isEditMode && newTxn.fromAccount === 'صندوق الورشة' && newTxn.type === TransactionType.PAYMENT) {
         status = 'Pending_Settlement';
     }
 
-    if (isEditMode && newTxn.id) {
-        // Update
-        const updatedTxns = transactions.map(t => {
-            if (t.id === newTxn.id) {
-                return {
-                    ...t,
-                    ...newTxn,
-                    toAccount: finalToAccount || t.toAccount,
-                    recipientName: finalRecipientName || t.recipientName,
-                    status: status
-                } as Transaction;
+    const transactionData: Transaction = {
+        ...newTxn as Transaction,
+        id: isEditMode && newTxn.id ? newTxn.id : `txn-${Date.now()}`,
+        serialNumber: finalSerial,
+        date: newTxn.date || new Date().toISOString().split('T')[0],
+        description: finalDescription,
+        fromAccount: finalFromAccount || 'الخزينة الرئيسية',
+        toAccount: newTxn.type === TransactionType.PAYMENT ? (finalRecipientName || 'مصروفات') : (newTxn.toAccount || 'الخزينة الرئيسية'),
+        recipientName: finalRecipientName,
+        recipientType: finalRecipientType,
+        statementItemId: finalStatementItemId,
+        status: status,
+        actualPaymentDate: status === 'Completed' ? new Date().toISOString().split('T')[0] : undefined,
+        referenceId: newTxn.hasLinkedInvoice ? `REF-${finalSerial}` : undefined
+    };
+
+    // --- Save & Sync & Audit Log ---
+    if (isEditMode) {
+        const index = MOCK_TRANSACTIONS.findIndex(t => t.id === transactionData.id);
+        if (index !== -1) {
+            MOCK_TRANSACTIONS[index] = transactionData;
+            // Audit
+            if (currentUser) {
+                logActivity(currentUser, 'UPDATE', 'Transaction', `تعديل القيد رقم ${finalSerial}: ${finalDescription}`, transactionData.id);
             }
-            return t;
-        });
-        setTransactions(updatedTxns);
+        }
     } else {
-        // Create
-        const txn: Transaction = {
-            id: `txn-${Date.now()}`,
-            type: newTxn.type as TransactionType,
-            date: newTxn.date || new Date().toISOString().split('T')[0],
-            amount: newTxn.amount || 0,
-            currency: 'USD', 
-            description: finalDescription,
-            fromAccount: newTxn.fromAccount || 'الخزينة الرئيسية',
-            toAccount: finalToAccount || 'مصروفات',
-            projectId: newTxn.projectId || 'General', 
-            attachmentUrl: newTxn.attachmentUrl,
-            recipientType: newTxn.recipientType as any,
-            recipientId: newTxn.recipientId,
-            recipientName: finalRecipientName,
-            status: status,
-            actualPaymentDate: status === 'Completed' ? new Date().toISOString().split('T')[0] : undefined
-        };
-        setTransactions([txn, ...transactions]);
+        MOCK_TRANSACTIONS.unshift(transactionData);
+        syncWithSubLedgers(transactionData);
+        // Audit
+        if (currentUser) {
+            logActivity(currentUser, 'CREATE', 'Transaction', `إضافة ${transactionData.type} رقم ${finalSerial} بقيمة ${transactionData.amount}`, transactionData.id);
+        }
     }
 
+    setTransactions([...MOCK_TRANSACTIONS]); // Trigger Re-render
     setIsModalOpen(false);
     resetForm();
-    
-    if (!isEditMode && status === 'Pending_Settlement') {
-        alert('تم تسجيل المصروف على الورشة.\nالحالة: معلق بانتظار الترحيل من الخزينة الرئيسية.');
-    }
   };
 
   const resetForm = () => {
     setNewTxn({ 
-        id: undefined,
-        amount: 0, 
-        currency: 'USD',
-        description: '', 
-        fromAccount: 'الخزينة الرئيسية', 
-        toAccount: '', 
-        type: TransactionType.PAYMENT,
-        recipientType: 'Other',
-        attachmentUrl: '',
-        projectId: ''
+        serialNumber: undefined, amount: 0, currency: 'USD', description: '', 
+        fromAccount: 'الخزينة الرئيسية', toAccount: '', type: TransactionType.PAYMENT,
+        recipientType: 'Other', projectId: 'General', statementItemId: '', hasLinkedInvoice: false
     });
-    setRecipientCategory('');
+    setSelectedSpecialty('');
+    setReceiptSourceType('client');
     setIsEditMode(false);
+    setIsAddingNewItem(false);
+    setNewItemName('');
   }
 
   const handleOpenAddModal = () => {
@@ -139,23 +258,12 @@ const Transactions: React.FC = () => {
     if (activeTab === 'revenues') defaultType = TransactionType.RECEIPT;
     if (activeTab === 'transfers') defaultType = TransactionType.TRANSFER;
 
-    setNewTxn(prev => ({ ...prev, type: defaultType }));
-    setIsEditMode(false);
+    setNewTxn(prev => ({ 
+        ...prev, 
+        type: defaultType,
+        toAccount: defaultType === TransactionType.RECEIPT ? 'الخزينة الرئيسية' : ''
+    }));
     setIsModalOpen(true);
-  };
-
-  const handleOpenEditModal = (txn: Transaction) => {
-      setNewTxn(txn);
-      setIsEditMode(true);
-      if (txn.recipientId) {
-          const emp = MOCK_EMPLOYEES.find(e => e.id === txn.recipientId);
-          if (emp) {
-               if (emp.type === EmployeeType.STAFF) setRecipientCategory('Staff');
-               else if (emp.type === EmployeeType.CRAFTSMAN) setRecipientCategory('Craftsman');
-               else if (emp.type === EmployeeType.WORKER) setRecipientCategory('Worker');
-          }
-      }
-      setIsModalOpen(true);
   };
 
   const initiateSettlement = (txn: Transaction) => {
@@ -168,538 +276,277 @@ const Transactions: React.FC = () => {
       e.preventDefault();
       if (!txnToSettle) return;
 
-      const updatedTxns = transactions.map(t => {
-          if (t.id === txnToSettle.id) {
-              return {
-                  ...t,
-                  status: 'Completed' as const,
-                  actualPaymentDate: settleDate,
-              };
+      const index = MOCK_TRANSACTIONS.findIndex(t => t.id === txnToSettle.id);
+      if (index !== -1) {
+          MOCK_TRANSACTIONS[index] = {
+              ...MOCK_TRANSACTIONS[index],
+              status: 'Completed',
+              actualPaymentDate: settleDate
+          };
+          if (currentUser) {
+              logActivity(currentUser, 'APPROVE', 'Transaction', `ترحيل القيد رقم ${txnToSettle.serialNumber}`, txnToSettle.id);
           }
-          return t;
-      });
-
-      setTransactions(updatedTxns);
+      }
+      setTransactions([...MOCK_TRANSACTIONS]);
       setIsSettleModalOpen(false);
       setTxnToSettle(null);
-      alert('تم ترحيل الدفعة وتسويتها بنجاح.');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        // Create a local URL for preview/access
-        setNewTxn({...newTxn, attachmentUrl: URL.createObjectURL(e.target.files[0])});
-    }
-  };
-
-  // --- Filter Logic ---
+  // --- Filtering ---
   const filteredTransactions = transactions.filter(txn => {
     const matchesSearch = txn.description.includes(searchTerm) || txn.fromAccount.includes(searchTerm) || txn.toAccount.includes(searchTerm);
-    const isUSD = txn.currency === 'USD';
+    const matchesYear = selectedYear ? txn.date.startsWith(selectedYear.toString()) : true;
     let matchesType = false;
 
     if (activeTab === 'expenses') {
         matchesType = txn.type === TransactionType.PAYMENT;
         if (matchesType) {
-             if (expenseSubTab === 'completed') {
-                 matchesType = (!txn.status || txn.status === 'Completed');
-             } else {
-                 matchesType = (txn.status === 'Pending_Settlement');
-             }
+             matchesType = expenseSubTab === 'completed' ? (!txn.status || txn.status === 'Completed') : (txn.status === 'Pending_Settlement');
         }
     }
     else if (activeTab === 'revenues') matchesType = txn.type === TransactionType.RECEIPT;
     else if (activeTab === 'transfers') matchesType = txn.type === TransactionType.TRANSFER;
 
-    return matchesType && matchesSearch && isUSD;
+    return matchesType && matchesSearch && matchesYear;
   });
 
   const currentTotal = filteredTransactions.reduce((acc, curr) => acc + curr.amount, 0);
 
-  const getEmployeesByCategory = () => {
-      if (!recipientCategory) return [];
-      let type: EmployeeType;
-      switch(recipientCategory) {
-          case 'Staff': type = EmployeeType.STAFF; break;
-          case 'Craftsman': type = EmployeeType.CRAFTSMAN; break;
-          case 'Worker': type = EmployeeType.WORKER; break;
-          default: return [];
-      }
-      return MOCK_EMPLOYEES.filter(e => e.type === type);
+  // Helper UI Data
+  const getSpecialtyLabel = (key: string) => {
+      const labels: any = { 'plumbing': 'أعمال صحية', 'electrical': 'أعمال كهرباء', 'carpentry': 'نجارة', 'painting': 'دهانات', 'general_worker': 'عمالة' };
+      return labels[key] || key;
   };
 
-  const getProjectName = (id: string | undefined) => {
-      if (!id || id === 'General' || id === 'N/A') return null;
-      return MOCK_PROJECTS.find(p => p.id === id)?.name;
-  }
-
-  // --- UI Helpers ---
-  const getTabColorClass = () => {
-      switch(activeTab) {
-          case 'expenses': return 'blue';
-          case 'revenues': return 'green';
-          case 'transfers': return 'orange';
-      }
+  const getEmployeesBySpecialty = () => {
+      if (!selectedSpecialty) return [];
+      return MOCK_EMPLOYEES.filter(emp => {
+          if (selectedSpecialty === 'general_worker') return emp.type === EmployeeType.WORKER;
+          const role = emp.role.toLowerCase();
+          if (selectedSpecialty === 'plumbing') return role.includes('سباك');
+          if (selectedSpecialty === 'electrical') return role.includes('كهرباء');
+          if (selectedSpecialty === 'carpentry') return role.includes('نجار');
+          if (selectedSpecialty === 'painting') return role.includes('دهان');
+          return false;
+      });
   };
 
-  // Data for Selects
-  const projectOptions = [
-      { value: '', label: 'عام (بدون مشروع محدد)' },
-      ...MOCK_PROJECTS.map(p => ({ value: p.id, label: `${p.name} - ${p.clientName}` }))
-  ];
+  const getStatementItemsForProject = () => {
+      if (!newTxn.projectId || newTxn.projectId === 'General') return [];
+      const project = MOCK_PROJECTS.find(p => p.id === newTxn.projectId);
+      return project?.statementRows?.map(row => ({ value: row.id, label: row['item'] || 'بند' })) || [];
+  };
 
-  const employeeOptions = getEmployeesByCategory().map(emp => ({ 
-      value: emp.id, 
-      label: `${emp.name} - ${emp.role}` 
-  }));
-
-  const accountOptions = [
-      { value: 'الخزينة الرئيسية', label: 'الخزينة الرئيسية' },
-      { value: 'صندوق الورشة', label: 'صندوق الورشة' },
-      { value: 'البنك - الأهلي', label: 'البنك - الأهلي' },
-      { value: 'البنك - الراجحي', label: 'البنك - الراجحي' },
-      { value: 'عهدة موظف', label: 'عهدة موظف' },
-      { value: 'أخرى', label: 'أخرى' },
-  ];
+  const getAccountOptions = () => {
+      const base = [{ value: 'الخزينة الرئيسية', label: 'الخزينة الرئيسية' }];
+      if (newTxn.projectId && newTxn.projectId !== 'General') base.push({ value: 'صندوق الورشة', label: 'صندوق الورشة (المشروع)' });
+      if (!newTxn.projectId || newTxn.projectId === 'General') base.push({ value: 'عهدة موظف', label: 'عهدة موظف' });
+      return base;
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">الحركات المالية $</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">سجل المدفوعات، المقبوضات، والتحويلات البنكية (بالدولار الأمريكي)</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">سجل المدفوعات والمقبوضات (الخزينة والمشاريع)</p>
         </div>
       </div>
 
-      {/* Main Tabs - Color Coded */}
+      {/* Tabs */}
       <div className="bg-white dark:bg-dark-900 p-1.5 rounded-2xl border border-gray-100 dark:border-dark-800 flex overflow-x-auto">
-         <button 
-           onClick={() => setActiveTab('expenses')}
-           className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'expenses' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}
-         >
-           <TrendingDown size={18} />
-           المصاريف
-         </button>
-         <button 
-           onClick={() => setActiveTab('revenues')}
-           className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'revenues' ? 'bg-green-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}
-         >
-           <TrendingUp size={18} />
-           الإيرادات
-         </button>
-         <button 
-           onClick={() => setActiveTab('transfers')}
-           className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'transfers' ? 'bg-orange-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}
-         >
-           <RefreshCcw size={18} />
-           التحويلات
-         </button>
+         <button onClick={() => setActiveTab('expenses')} className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'expenses' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}><TrendingDown size={18} /> المصاريف</button>
+         <button onClick={() => setActiveTab('revenues')} className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'revenues' ? 'bg-green-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}><TrendingUp size={18} /> الإيرادات</button>
+         <button onClick={() => setActiveTab('transfers')} className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'transfers' ? 'bg-orange-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}><RefreshCcw size={18} /> التحويلات</button>
       </div>
       
-      {/* Sub-Tabs for Expenses Only */}
+      {/* Sub-Tabs (Expenses) */}
       {activeTab === 'expenses' && (
           <div className="flex gap-2">
-              <button 
-                onClick={() => setExpenseSubTab('completed')}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${expenseSubTab === 'completed' ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-900' : 'bg-white dark:bg-dark-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-dark-700'}`}
-              >
-                  <CheckCircle size={16} />
-                  مصاريف مرحلة (مدفوعة)
-              </button>
-              <button 
-                onClick={() => setExpenseSubTab('pending')}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${expenseSubTab === 'pending' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-900' : 'bg-white dark:bg-dark-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-dark-700'}`}
-              >
-                  <Clock size={16} />
-                  مصاريف معلقة (بانتظار الترحيل)
-                  {transactions.filter(t => t.type === TransactionType.PAYMENT && t.status === 'Pending_Settlement').length > 0 && (
-                      <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full animate-pulse">
-                          {transactions.filter(t => t.type === TransactionType.PAYMENT && t.status === 'Pending_Settlement').length}
-                      </span>
-                  )}
-              </button>
+              <button onClick={() => setExpenseSubTab('completed')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${expenseSubTab === 'completed' ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-900' : 'bg-white dark:bg-dark-900 text-gray-600 border border-gray-200 dark:border-dark-700'}`}><CheckCircle size={16} /> مدفوعة</button>
+              <button onClick={() => setExpenseSubTab('pending')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${expenseSubTab === 'pending' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-900' : 'bg-white dark:bg-dark-900 text-gray-600 border border-gray-200 dark:border-dark-700'}`}><Clock size={16} /> معلقة (تحت التسوية)</button>
           </div>
       )}
 
-      {/* Summary Card - Dynamic Colors */}
-      <div className={`p-6 rounded-2xl border flex items-center justify-between ${
-          activeTab === 'expenses' ? 'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-900/10 dark:border-blue-900 dark:text-blue-300' : 
-          activeTab === 'revenues' ? 'bg-green-50 border-green-100 text-green-800 dark:bg-green-900/10 dark:border-green-900 dark:text-green-300' : 
-          'bg-orange-50 border-orange-100 text-orange-800 dark:bg-orange-900/10 dark:border-orange-900 dark:text-orange-300'
-      }`}>
+      {/* Summary */}
+      <div className={`p-6 rounded-2xl border flex items-center justify-between ${activeTab === 'expenses' ? 'bg-blue-50 border-blue-100 text-blue-800 dark:bg-blue-900/10 dark:border-blue-900 dark:text-blue-300' : activeTab === 'revenues' ? 'bg-green-50 border-green-100 text-green-800 dark:bg-green-900/10 dark:border-green-900 dark:text-green-300' : 'bg-orange-50 border-orange-100 text-orange-800 dark:bg-orange-900/10 dark:border-orange-900 dark:text-orange-300'}`}>
           <div>
-            <p className="text-sm font-bold opacity-80 mb-1">
-                {activeTab === 'expenses' 
-                    ? (expenseSubTab === 'pending' ? 'إجمالي المصاريف المعلقة' : 'إجمالي المصاريف المرحلة') 
-                    : (activeTab === 'revenues' ? 'إجمالي الإيرادات المقبوضة' : 'إجمالي التحويلات الداخلية')}
-            </p>
+            <p className="text-sm font-bold opacity-80 mb-1">الإجمالي للفترة الحالية</p>
             <h2 className="text-4xl font-extrabold tracking-tight">{formatCurrency(currentTotal, 'USD')}</h2>
           </div>
-          <div className={`p-4 rounded-2xl shadow-sm ${
-              activeTab === 'expenses' ? 'bg-blue-200 text-blue-700 dark:bg-blue-900 dark:text-blue-400' : 
-              activeTab === 'revenues' ? 'bg-green-200 text-green-700 dark:bg-green-900 dark:text-green-400' : 
-              'bg-orange-200 text-orange-700 dark:bg-orange-900 dark:text-orange-400'
-          }`}>
-            {activeTab === 'expenses' ? <ArrowUpRight size={32} /> : 
-             activeTab === 'revenues' ? <ArrowDownLeft size={32} /> : 
-             <RefreshCcw size={32} />}
+          <div className={`p-4 rounded-2xl shadow-sm bg-white/50`}>
+            {activeTab === 'expenses' ? <ArrowUpRight size={32} /> : activeTab === 'revenues' ? <ArrowDownLeft size={32} /> : <RefreshCcw size={32} />}
           </div>
       </div>
 
-      {/* Actions & Search */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white dark:bg-dark-900 p-4 rounded-xl border border-gray-100 dark:border-dark-800">
-        <div className="relative w-full md:w-96">
+      {/* Actions */}
+      <div className="flex justify-between items-center bg-white dark:bg-dark-900 p-4 rounded-xl border border-gray-100 dark:border-dark-800">
+        <div className="relative w-96">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input 
-              type="text" 
-              placeholder="بحث في الحركات..." 
-              className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <input type="text" placeholder="بحث..." className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-dark-950 dark:text-white outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
-            <button 
-                onClick={handleOpenAddModal}
-                className={`text-white px-5 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg font-bold ${
-                    activeTab === 'expenses' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/30' : 
-                    activeTab === 'revenues' ? 'bg-green-600 hover:bg-green-700 shadow-green-500/30' : 
-                    'bg-orange-600 hover:bg-orange-700 shadow-orange-500/30'
-                }`}
-            >
-                <PlusCircle size={18} />
-                <span>
-                    {activeTab === 'expenses' ? 'تسجيل مصروف' : 
-                     activeTab === 'revenues' ? 'تسجيل إيراد' : 
-                     'تحويل جديد'}
-                </span>
-            </button>
-        </div>
+        <button onClick={handleOpenAddModal} className={`text-white px-5 py-2 rounded-lg flex items-center gap-2 shadow-lg font-bold transition-colors ${activeTab === 'expenses' ? 'bg-blue-600 hover:bg-blue-700' : activeTab === 'revenues' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'}`}>
+            <PlusCircle size={18} />
+            <span>{activeTab === 'expenses' ? 'تسجيل مصروف' : activeTab === 'revenues' ? 'تسجيل إيراد' : 'تحويل جديد'}</span>
+        </button>
       </div>
 
-      {/* Transaction List */}
+      {/* Table */}
       <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-right">
+        <table className="w-full text-sm text-right">
             <thead className="bg-gray-50 dark:bg-dark-800 text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-dark-700">
               <tr>
-                <th className="px-6 py-4 font-medium">نوع الحركة</th>
-                <th className="px-6 py-4 font-medium">التاريخ</th>
-                <th className="px-6 py-4 font-medium">الوصف</th>
-                <th className="px-6 py-4 font-medium">المشروع</th>
-                <th className="px-6 py-4 font-medium">من حساب</th>
-                <th className="px-6 py-4 font-medium">إلى حساب</th>
-                <th className="px-6 py-4 font-medium">المبلغ</th>
-                <th className="px-6 py-4 font-medium">المرفقات</th>
-                <th className="px-6 py-4 font-medium">الإجراء</th>
+                <th className="px-6 py-4">رقم القيد</th>
+                <th className="px-6 py-4">التاريخ</th>
+                <th className="px-6 py-4">الوصف</th>
+                <th className="px-6 py-4">الجهة / المشروع</th>
+                <th className="px-6 py-4">من حساب</th>
+                <th className="px-6 py-4">إلى حساب</th>
+                <th className="px-6 py-4">المبلغ</th>
+                <th className="px-6 py-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
               {filteredTransactions.map((txn) => (
                 <tr key={txn.id} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
+                  <td className="px-6 py-4 font-mono font-bold text-gray-700 dark:text-gray-300">#{txn.serialNumber}</td>
+                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400 font-mono text-xs">{txn.date}</td>
+                  <td className="px-6 py-4 font-medium text-gray-800 dark:text-white truncate max-w-xs">{txn.description}</td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`p-1.5 rounded-full ${
-                        txn.type === TransactionType.RECEIPT ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' :
-                        txn.type === TransactionType.PAYMENT ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
-                        'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
-                      }`}>
-                        {txn.type === TransactionType.RECEIPT ? <ArrowDownLeft size={16} /> :
-                         txn.type === TransactionType.PAYMENT ? <ArrowUpRight size={16} /> :
-                         <RefreshCcw size={16} />}
-                      </div>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{txn.type === TransactionType.RECEIPT ? 'سند قبض' : 'سند صرف'}</span>
-                    </div>
+                      {txn.projectId && txn.projectId !== 'General' ? 
+                        <span className="bg-gray-100 dark:bg-dark-700 px-2 py-1 rounded text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1 w-fit"><Briefcase size={10} /> {MOCK_PROJECTS.find(p => p.id === txn.projectId)?.name}</span> : 
+                        <span className="text-gray-400 text-xs">عام</span>}
                   </td>
-                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400 font-mono text-xs">
-                      <div className="flex flex-col">
-                          <span className="font-bold text-gray-700 dark:text-gray-300">{txn.date}</span>
-                          {txn.actualPaymentDate && txn.actualPaymentDate !== txn.date && (
-                              <span className="text-[9px] text-green-600 font-bold mt-1 bg-green-50 dark:bg-green-900/20 px-1 rounded w-fit" title="تاريخ الصرف الفعلي">
-                                  فعلي: {txn.actualPaymentDate}
-                              </span>
-                          )}
-                      </div>
-                  </td>
-                  <td className="px-6 py-4 text-gray-700 dark:text-gray-300 max-w-xs truncate font-medium">
-                    {txn.description}
-                  </td>
+                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{txn.fromAccount}</td>
+                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{txn.toAccount}</td>
+                  <td className={`px-6 py-4 font-bold ${txn.type === TransactionType.RECEIPT ? 'text-green-600' : 'text-blue-600'}`}>{formatCurrency(txn.amount)}</td>
                   <td className="px-6 py-4">
-                      {txn.projectId && txn.projectId !== 'General' && txn.projectId !== 'N/A' ? (
-                          <span className="inline-flex items-center gap-1 bg-gray-100 dark:bg-dark-700 px-2 py-1 rounded text-xs font-bold text-gray-700 dark:text-gray-300">
-                              <Briefcase size={12} />
-                              {getProjectName(txn.projectId) || txn.projectId}
-                          </span>
-                      ) : <span className="text-gray-400 text-xs">-</span>}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                      {txn.fromAccount}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                    {txn.toAccount}
-                  </td>
-                  <td className={`px-6 py-4 font-bold text-base ${
-                    txn.type === TransactionType.RECEIPT ? 'text-green-600' : 
-                    txn.type === TransactionType.PAYMENT ? 'text-blue-600' :
-                    'text-orange-600'
-                  }`}>
-                    {formatCurrency(txn.amount, 'USD')}
-                  </td>
-                  <td className="px-6 py-4">
-                     {txn.attachmentUrl ? (
-                         <button 
-                            className="flex items-center gap-1 text-primary-600 hover:text-primary-800 bg-primary-50 dark:bg-primary-900/20 px-2 py-1 rounded text-xs font-bold transition-colors"
-                            onClick={() => window.open(txn.attachmentUrl, '_blank')}
-                         >
-                             {txn.attachmentUrl.includes('pdf') ? <FileText size={14} /> : <Paperclip size={14} />}
-                             عرض الفاتورة
-                         </button>
-                     ) : (
-                         <span className="text-gray-300 text-xs">-</span>
-                     )}
-                  </td>
-                  <td className="px-6 py-4 flex items-center gap-2">
-                     {txn.status === 'Pending_Settlement' ? (
-                         <button 
-                            onClick={() => initiateSettlement(txn)}
-                            className="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm"
-                            title="ترحيل واعتماد"
-                         >
-                             <Check size={14} />
-                             ترحيل
-                         </button>
-                     ) : (
-                        <button 
-                            onClick={() => handleOpenEditModal(txn)}
-                            className="text-gray-500 hover:text-primary-600 bg-gray-100 hover:bg-primary-50 dark:bg-dark-800 dark:hover:bg-dark-700 dark:text-gray-400 p-1.5 rounded-lg transition-colors"
-                            title="تعديل"
-                        >
-                            <Edit size={14} />
-                        </button>
+                     {txn.status === 'Pending_Settlement' && (
+                         <button onClick={() => initiateSettlement(txn)} className="bg-primary-600 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1 hover:bg-primary-700"><Check size={14} /> ترحيل</button>
                      )}
                   </td>
                 </tr>
               ))}
-              {filteredTransactions.length === 0 && (
-                  <tr>
-                      <td colSpan={9} className="text-center py-12 text-gray-400 dark:text-gray-600">
-                          {activeTab === 'expenses' && expenseSubTab === 'pending' 
-                             ? 'لا توجد مصاريف معلقة بانتظار الترحيل' 
-                             : 'لا توجد حركات مسجلة في هذا القسم'}
-                      </td>
-                  </tr>
-              )}
+              {filteredTransactions.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-gray-400">لا توجد حركات</td></tr>}
             </tbody>
-          </table>
-        </div>
+        </table>
       </div>
 
-       {/* Add/Edit Transaction Modal */}
-       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditMode ? "تعديل حركة مالية" : "تسجيل حركة مالية جديدة (USD)"}>
+      {/* Main Modal */}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="تسجيل حركة مالية جديدة">
         <form onSubmit={handleSaveTransaction} className="space-y-4">
-          
           <div className="bg-gray-50 dark:bg-dark-800 p-4 rounded-xl border border-gray-100 dark:border-dark-700">
-             <div className="grid grid-cols-2 gap-4 mb-4">
+             <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نوع الحركة</label>
-                    <select
-                    disabled
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg bg-gray-200 dark:bg-dark-900 text-gray-500 cursor-not-allowed font-bold"
-                    value={newTxn.type}
-                    onChange={(e) => setNewTxn({...newTxn, type: e.target.value as TransactionType})}
-                    >
-                    <option value={TransactionType.PAYMENT}>سند صرف (دفع)</option>
-                    <option value={TransactionType.RECEIPT}>سند قبض (استلام)</option>
-                    <option value={TransactionType.TRANSFER}>تحويل داخلي</option>
+                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">نوع الحركة</label>
+                    <select disabled className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-500 font-bold" value={newTxn.type}>
+                        <option value={TransactionType.PAYMENT}>سند صرف</option>
+                        <option value={TransactionType.RECEIPT}>سند قبض</option>
+                        <option value={TransactionType.TRANSFER}>تحويل</option>
                     </select>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المبلغ ($) <span className="text-red-500">*</span></label>
-                    <input 
-                    required
-                    type="number" 
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white font-bold text-lg"
-                    value={newTxn.amount}
-                    onChange={(e) => setNewTxn({...newTxn, amount: Number(e.target.value)})}
-                    />
+                    <label className="block text-sm font-medium mb-1 dark:text-gray-300">المبلغ ($)</label>
+                    <input required type="number" className="w-full px-4 py-2 border rounded-lg dark:bg-dark-950 dark:text-white font-bold text-lg focus:ring-2 focus:ring-primary-500 outline-none" value={newTxn.amount} onChange={(e) => setNewTxn({...newTxn, amount: Number(e.target.value)})} />
                 </div>
              </div>
-             
-             {/* Project Selection with SearchableSelect */}
-             <div>
-                <SearchableSelect 
-                    label="ربط بالمشروع (هام)"
-                    options={projectOptions}
-                    value={newTxn.projectId || ''}
-                    onChange={(val) => setNewTxn({...newTxn, projectId: val})}
-                    placeholder="ابحث عن المشروع..."
-                />
-                <p className="text-[10px] text-gray-400 mt-1">اختيار المشروع يضمن ظهور الحركة في كشف حساب المشروع والعميل.</p>
-             </div>
           </div>
 
+          {/* Receipt Source Logic */}
+          {newTxn.type === TransactionType.RECEIPT && (
+             <div className="space-y-3">
+                 <div className="flex gap-2 overflow-x-auto pb-2">
+                     {[{id: 'client', label: 'عميل', icon: UserIcon}, {id: 'investor', label: 'مستثمر', icon: TrendingUp}, {id: 'trustee', label: 'أمانة', icon: Shield}, {id: 'other', label: 'عام', icon: Plus}].map((type: any) => (
+                         <button type="button" key={type.id} onClick={() => setReceiptSourceType(type.id)} className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg flex flex-col items-center gap-1 transition-all ${receiptSourceType === type.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                             <type.icon size={16} /> {type.label}
+                         </button>
+                     ))}
+                 </div>
+                 {receiptSourceType === 'client' && <SearchableSelect label="المشروع" options={MOCK_PROJECTS.map(p => ({ value: p.id, label: p.name }))} value={newTxn.projectId || ''} onChange={(val) => setNewTxn({...newTxn, projectId: val})} />}
+                 {receiptSourceType === 'investor' && <SearchableSelect label="المستثمر" options={MOCK_INVESTORS.map(i => ({ value: i.id, label: i.name }))} value={newTxn.recipientId || ''} onChange={(val) => setNewTxn({...newTxn, recipientId: val})} />}
+                 {receiptSourceType === 'trustee' && <SearchableSelect label="صاحب الأمانة" options={MOCK_TRUSTEES.map(t => ({ value: t.id, label: t.name }))} value={newTxn.recipientId || ''} onChange={(val) => setNewTxn({...newTxn, recipientId: val})} />}
+                 {receiptSourceType === 'other' && <input type="text" placeholder="اسم الجهة" className="w-full px-4 py-2 border rounded-lg" value={newTxn.fromAccount} onChange={(e) => setNewTxn({...newTxn, fromAccount: e.target.value})} />}
+             </div>
+          )}
+
+          {/* Payment Logic */}
+          {newTxn.type === TransactionType.PAYMENT && (
+             <div className="space-y-3">
+                <SearchableSelect label="توجيه المصروف" options={[{value: 'General', label: 'مصاريف عامة'}, ...MOCK_PROJECTS.map(p => ({ value: p.id, label: p.name }))]} value={newTxn.projectId || 'General'} onChange={(val) => setNewTxn({...newTxn, projectId: val})} />
+                
+                {/* Statement Link */}
+                {newTxn.projectId && newTxn.projectId !== 'General' && (
+                    <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                        {isAddingNewItem ? (
+                            <div className="flex gap-2 items-end">
+                                <div className="flex-1"><label className="block text-xs font-bold mb-1 text-blue-800">اسم البند الجديد</label><input type="text" className="w-full border rounded p-2 text-sm" value={newItemName} onChange={e => setNewItemName(e.target.value)} autoFocus /></div>
+                                <button type="button" onClick={() => setIsAddingNewItem(false)} className="p-2 bg-gray-200 rounded text-gray-600"><X size={16}/></button>
+                            </div>
+                        ) : (
+                            <div className="flex items-end gap-2">
+                                <div className="flex-1"><SearchableSelect label="بند العمل (الكشف المؤقت)" options={getStatementItemsForProject()} value={newTxn.statementItemId || ''} onChange={val => setNewTxn({...newTxn, statementItemId: val})} /></div>
+                                <button type="button" onClick={() => setIsAddingNewItem(true)} className="bg-blue-600 text-white p-2 rounded-lg flex items-center gap-1 text-xs font-bold h-[42px]"><Plus size={14}/> جديد</button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Recipient Logic */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">التخصص</label>
+                        <select className="w-full px-3 py-2 border rounded-lg dark:bg-dark-950 dark:text-white" value={selectedSpecialty} onChange={(e) => { setSelectedSpecialty(e.target.value); setNewTxn({...newTxn, recipientId: '', recipientType: e.target.value === 'general_worker' ? 'Worker' : 'Craftsman'}); }}>
+                            <option value="">عام / مورد</option>
+                            <option value="plumbing">سباكة</option>
+                            <option value="electrical">كهرباء</option>
+                            <option value="carpentry">نجارة</option>
+                            <option value="painting">دهان</option>
+                            <option value="general_worker">عمالة</option>
+                        </select>
+                    </div>
+                    {selectedSpecialty && (
+                        <div>
+                            <SearchableSelect label="اسم المستلم" options={getEmployeesBySpecialty().map(e => ({ value: e.id, label: e.name }))} value={newTxn.recipientId || ''} onChange={(val) => setNewTxn({...newTxn, recipientId: val, toAccount: MOCK_EMPLOYEES.find(e => e.id === val)?.name})} />
+                        </div>
+                    )}
+                </div>
+                {!selectedSpecialty && <input type="text" placeholder="اسم المستفيد / المورد" className="w-full px-4 py-2 border rounded-lg dark:bg-dark-950 dark:text-white" value={newTxn.toAccount} onChange={(e) => setNewTxn({...newTxn, toAccount: e.target.value})} />}
+             </div>
+          )}
+
+          {/* Accounts */}
           <div className="grid grid-cols-2 gap-4">
              <div>
-                <SearchableSelect
-                  label="من حساب"
-                  options={accountOptions}
-                  value={newTxn.fromAccount || 'الخزينة الرئيسية'}
-                  onChange={(val) => setNewTxn({...newTxn, fromAccount: val})}
-                  required
-                />
-                {newTxn.fromAccount === 'صندوق الورشة' && newTxn.type === TransactionType.PAYMENT && (
-                    <p className="text-xs text-orange-600 mt-1 font-bold">
-                        * سيتم تسجيل الحركة كـ "معلقة"
-                    </p>
-                )}
+                 <SearchableSelect label="من حساب" options={getAccountOptions()} value={newTxn.fromAccount || 'الخزينة الرئيسية'} onChange={(val) => setNewTxn({...newTxn, fromAccount: val})} disabled={newTxn.type === TransactionType.RECEIPT} />
+                 {newTxn.fromAccount === 'صندوق الورشة' && <p className="text-[10px] text-orange-600 mt-1">* سيتم تعليق الحركة حتى الترحيل</p>}
              </div>
-             <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">إلى حساب / المستفيد</label>
-                <input 
-                  type="text" 
-                  placeholder={newTxn.type === TransactionType.PAYMENT ? "المورد / الجهة" : "البنك / الصندوق"}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
-                  value={newTxn.toAccount}
-                  onChange={(e) => setNewTxn({...newTxn, toAccount: e.target.value})}
-                  disabled={!!newTxn.recipientId} // Disable if HR is selected
-                />
-             </div>
+             {newTxn.type === TransactionType.RECEIPT && (
+                 <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">إلى حساب</label><input disabled className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-500" value="الخزينة الرئيسية" /></div>
+             )}
           </div>
 
-          {/* HR Linking Section */}
+          <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">البيان</label><textarea rows={2} className="w-full px-4 py-2 border rounded-lg dark:bg-dark-950 dark:text-white resize-none" value={newTxn.description} onChange={(e) => setNewTxn({...newTxn, description: e.target.value})} /></div>
+
           {newTxn.type === TransactionType.PAYMENT && (
-              <div className="bg-gray-50 dark:bg-dark-800 p-4 rounded-xl border border-gray-200 dark:border-dark-600 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                        <HardHat size={16} />
-                        ربط بموظف / حرفي
-                    </h4>
-                    {newTxn.recipientId && (
-                        <button type="button" onClick={() => {setRecipientCategory(''); setNewTxn({...newTxn, recipientId: ''})}} className="text-xs text-red-500 hover:underline">إلغاء الربط</button>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                      <div>
-                          <select 
-                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-dark-700 rounded-lg focus:outline-none dark:bg-dark-950 dark:text-white"
-                            value={recipientCategory}
-                            onChange={(e) => {
-                                setRecipientCategory(e.target.value);
-                                setNewTxn({...newTxn, recipientId: '', recipientType: e.target.value as any});
-                            }}
-                          >
-                              <option value="">الفئة...</option>
-                              <option value="Staff">كادر إداري</option>
-                              <option value="Craftsman">حرفي</option>
-                              <option value="Worker">عامل</option>
-                          </select>
-                      </div>
-                      <div>
-                          <SearchableSelect 
-                             options={employeeOptions}
-                             value={newTxn.recipientId || ''}
-                             onChange={(val) => {
-                                 const selectedEmp = MOCK_EMPLOYEES.find(emp => emp.id === val);
-                                 setNewTxn({
-                                     ...newTxn, 
-                                     recipientId: val,
-                                     toAccount: selectedEmp ? selectedEmp.name : newTxn.toAccount
-                                 });
-                             }}
-                             disabled={!recipientCategory}
-                             placeholder="اختر الاسم..."
-                          />
-                      </div>
-                  </div>
+              <div className="flex items-center gap-2 bg-purple-50 dark:bg-purple-900/10 p-3 rounded-lg border border-purple-100 dark:border-purple-900/30">
+                  <input type="checkbox" className="w-4 h-4" checked={newTxn.hasLinkedInvoice} onChange={(e) => setNewTxn({...newTxn, hasLinkedInvoice: e.target.checked})} />
+                  <span className="text-sm font-bold text-purple-800 dark:text-purple-300">إنشاء فاتورة مرتبطة تلقائياً</span>
               </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوصف / البيان</label>
-            <textarea 
-              rows={2}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none resize-none dark:bg-dark-950 dark:text-white"
-              value={newTxn.description}
-              onChange={(e) => setNewTxn({...newTxn, description: e.target.value})}
-            />
-          </div>
-
-          {/* Attachments (Enhanced UI) */}
-          <div>
-             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المرفقات (فاتورة)</label>
-             <div className="border-2 border-dashed border-gray-300 dark:border-dark-600 rounded-lg p-3 flex flex-col items-center justify-center text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800 cursor-pointer relative transition-colors bg-gray-50 dark:bg-dark-900">
-                <input type="file" accept="image/*,.pdf" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileChange} />
-                <div className="flex gap-6 items-center">
-                    <div className="flex flex-col items-center group">
-                        <div className="w-8 h-8 rounded-full bg-red-100 text-red-500 flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
-                            <FileText size={16} />
-                        </div>
-                        <span className="text-[10px]">PDF</span>
-                    </div>
-                    <div className="w-px bg-gray-300 h-8"></div>
-                    <div className="flex flex-col items-center group">
-                         <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-500 flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
-                            <Camera size={16} />
-                        </div>
-                        <span className="text-[10px]">صورة</span>
-                    </div>
-                </div>
-                {newTxn.attachmentUrl && (
-                    <div className="absolute inset-0 bg-green-50 dark:bg-green-900/90 flex items-center justify-center rounded-lg backdrop-blur-sm">
-                        <span className="text-green-700 dark:text-green-400 font-bold text-sm flex items-center gap-2">
-                            <Check size={16} /> تم إرفاق الملف
-                        </span>
-                    </div>
-                )}
-             </div>
-          </div>
-          
           <div className="pt-2 flex gap-3">
-            <button 
-              type="submit" 
-              className="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 rounded-lg transition-colors shadow-lg"
-            >
-              {isEditMode ? 'حفظ التعديلات' : 'حفظ الحركة'}
-            </button>
-            <button 
-              type="button" 
-              onClick={() => setIsModalOpen(false)}
-              className="flex-1 bg-gray-100 hover:bg-gray-200 dark:bg-dark-800 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-300 font-bold py-2.5 rounded-lg transition-colors"
-            >
-              إلغاء
-            </button>
+            <button type="submit" className="flex-1 bg-primary-600 text-white font-bold py-2.5 rounded-lg hover:bg-primary-700">حفظ</button>
+            <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-lg hover:bg-gray-200">إلغاء</button>
           </div>
         </form>
       </Modal>
 
-      {/* Settle/Post Modal */}
-      <Modal isOpen={isSettleModalOpen} onClose={() => setIsSettleModalOpen(false)} title="ترحيل واعتماد المصروف">
-          <form onSubmit={confirmSettlement} className="space-y-6">
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-xl border border-yellow-200 dark:border-yellow-800">
-                  <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-1">تفاصيل المصروف المعلق</p>
-                  <p className="font-bold text-gray-800 dark:text-white">{txnToSettle?.description}</p>
-                  <p className="text-xl font-bold text-blue-600 mt-2">{formatCurrency(txnToSettle?.amount || 0, 'USD')}</p>
-              </div>
-
-              <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">تاريخ الدفع الفعلي (من الخزينة)</label>
-                  <input 
-                      type="date" 
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
-                      value={settleDate}
-                      onChange={(e) => setSettleDate(e.target.value)}
-                  />
-              </div>
-
-              <div className="pt-2 flex gap-3">
-                  <button type="submit" className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg transition-colors shadow-lg shadow-green-500/20">
-                      تأكيد الترحيل والدفع
-                  </button>
-                  <button type="button" onClick={() => setIsSettleModalOpen(false)} className="flex-1 bg-gray-100 dark:bg-dark-800 hover:bg-gray-200 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-300 font-bold py-2.5 rounded-lg transition-colors">
-                      إلغاء
-                  </button>
-              </div>
+      {/* Settle Modal */}
+      <Modal isOpen={isSettleModalOpen} onClose={() => setIsSettleModalOpen(false)} title="ترحيل مصروف">
+          <form onSubmit={confirmSettlement} className="space-y-4">
+              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200"><p className="font-bold text-gray-800">{txnToSettle?.description}</p><p className="text-blue-600 font-bold text-lg mt-1">{formatCurrency(txnToSettle?.amount || 0)}</p></div>
+              <div><label className="block text-sm font-bold mb-1">تاريخ الدفع الفعلي</label><input type="date" className="w-full px-4 py-2 border rounded-lg" value={settleDate} onChange={(e) => setSettleDate(e.target.value)} /></div>
+              <button type="submit" className="w-full bg-green-600 text-white font-bold py-2.5 rounded-lg">تأكيد الترحيل</button>
           </form>
       </Modal>
     </div>

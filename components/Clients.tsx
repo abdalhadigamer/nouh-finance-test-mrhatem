@@ -1,15 +1,17 @@
 
 import React, { useState } from 'react';
 import { MOCK_CLIENTS, MOCK_PROJECTS } from '../constants';
-import { Client, AppDocument } from '../types';
+import { Client, AppDocument, User } from '../types';
+import { logActivity } from '../services/auditService';
 import { Search, UserPlus, Phone, Mail, Building, Key, Eye, EyeOff, Edit, Trash2, FolderOpen, Upload, Paperclip, FileText, X } from 'lucide-react';
 import Modal from './Modal';
 
 interface ClientsProps {
   onViewProjects: (client: Client) => void;
+  currentUser?: User;
 }
 
-const Clients: React.FC<ClientsProps> = ({ onViewProjects }) => {
+const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
   const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
   const [searchTerm, setSearchTerm] = useState('');
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
@@ -38,9 +40,31 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects }) => {
   const handleSaveClient = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // --- COMPREHENSIVE VALIDATION ---
+    const errors: string[] = [];
+
+    if (!currentClient.name?.trim()) {
+        errors.push("اسم العميل مطلوب.");
+    }
+    if (!currentClient.username?.trim()) {
+        errors.push("اسم المستخدم مطلوب للدخول للبوابة.");
+    }
+    if (!currentClient.password?.trim()) {
+        errors.push("كلمة المرور مطلوبة.");
+    }
+    
+    if (errors.length > 0) {
+        alert("عذراً، لا يمكن حفظ بيانات العميل. يرجى تصحيح الأخطاء التالية:\n\n" + errors.map(e => "• " + e).join("\n"));
+        return;
+    }
+    // --------------------------------
+
     if (isEditMode && currentClient.id) {
       // Edit
       setClients(clients.map(c => c.id === currentClient.id ? { ...c, ...currentClient } as Client : c));
+      if (currentUser) {
+          logActivity(currentUser, 'UPDATE', 'Client', `تعديل بيانات العميل: ${currentClient.name}`, currentClient.id);
+      }
     } else {
       // Add
       const newClientData: Client = {
@@ -50,6 +74,9 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects }) => {
         avatar: currentClient.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentClient.name}`
       } as Client;
       setClients([newClientData, ...clients]);
+      if (currentUser) {
+          logActivity(currentUser, 'CREATE', 'Client', `إضافة عميل جديد: ${newClientData.name}`, newClientData.id);
+      }
     }
     
     setIsModalOpen(false);
@@ -58,7 +85,11 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects }) => {
 
   const handleDeleteClient = (id: string) => {
     if (confirm('هل أنت متأكد من حذف هذا العميل؟')) {
+      const clientName = clients.find(c => c.id === id)?.name;
       setClients(clients.filter(c => c.id !== id));
+      if (currentUser) {
+          logActivity(currentUser, 'DELETE', 'Client', `حذف العميل: ${clientName || id}`, id);
+      }
     }
   };
 

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout, { SearchResultItem } from './components/Layout';
 import Dashboard from './components/Dashboard';
 import Projects from './components/Projects';
@@ -17,9 +17,17 @@ import EmployeePortal from './components/EmployeePortal';
 import ManagerReports from './components/ManagerReports';
 import Files from './components/Files'; 
 import Notifications from './components/Notifications';
-import Messages from './components/Messages'; // NEW IMPORT
-import { MOCK_USERS, MOCK_PROJECTS, MOCK_CLIENTS, MOCK_EMPLOYEES, LOGO_URL } from './constants';
-import { User, UserRole, Client, Employee, Project } from './types';
+import Messages from './components/Messages'; 
+import CompanyExpenses from './components/CompanyExpenses'; 
+import Trusts from './components/Trusts'; 
+import Investors from './components/Investors'; 
+import TrusteePortal from './components/TrusteePortal'; 
+import InvestorPortal from './components/InvestorPortal'; 
+import ProfitLoss from './components/ProfitLoss'; 
+import ActivityLogs from './components/ActivityLogs'; 
+import { MOCK_USERS, MOCK_PROJECTS, MOCK_CLIENTS, MOCK_EMPLOYEES, MOCK_TRUSTEES, MOCK_INVESTORS, LOGO_URL, DEFAULT_PERMISSIONS } from './constants';
+import { User, UserRole, Client, Employee, Project, Trustee, Investor, RolePermissions, SystemModule } from './types';
+import { logActivity } from './services/auditService';
 
 // Simple Auth Login Component
 const LoginScreen = ({ onLogin }: { onLogin: (emailOrUsername: string, password?: string) => void }) => {
@@ -111,30 +119,46 @@ const App: React.FC = () => {
   // --- GLOBAL STATE ---
   const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
   const [employees, setEmployees] = useState<Employee[]>(MOCK_EMPLOYEES);
+  
+  // Fiscal Year Global State (Defaults to current year)
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(new Date().getFullYear());
+
+  // Permissions Global State
+  const [permissions, setPermissions] = useState<RolePermissions[]>(DEFAULT_PERMISSIONS);
 
   // Navigation State
   const [selectedClientForDetails, setSelectedClientForDetails] = useState<Client | null>(null);
   const [selectedProjectForDetails, setSelectedProjectForDetails] = useState<Project | null>(null);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+  const [currentTrustee, setCurrentTrustee] = useState<Trustee | null>(null); 
+  const [currentInvestor, setCurrentInvestor] = useState<Investor | null>(null);
+
+  // -- PERMISSION CHECK HELPER --
+  const hasPermission = (module: SystemModule): boolean => {
+    if (!currentUser) return false;
+    const userPerms = permissions.find(p => p.role === currentUser.role);
+    return userPerms ? userPerms.canView.includes(module) : false;
+  };
 
   const handleLogin = (emailOrUsername: string, password?: string) => {
     const identifier = emailOrUsername.trim().toLowerCase();
     const pwd = password?.trim();
 
+    // 1. Admin/Staff Login
     const staffUser = MOCK_USERS.find(u => u.email.toLowerCase() === identifier);
-    
-    if (staffUser) {
+    if (staffUser && staffUser.password === pwd) {
       setIsAuthenticated(true);
       setCurrentUser(staffUser);
       setCurrentPage('dashboard');
+      logActivity(staffUser, 'LOGIN', 'Settings', 'تسجيل دخول للنظام');
       return;
     }
 
+    // 2. Client Login
     const client = MOCK_CLIENTS.find(c => 
       c.username.toLowerCase() === identifier && 
       c.password === pwd
     );
-
     if (client) {
       setIsAuthenticated(true);
       setCurrentUser({
@@ -148,6 +172,7 @@ const App: React.FC = () => {
       return;
     }
 
+    // 3. Employee Login
     const employee = employees.find(e => {
        const isUsernameMatch = e.username?.toLowerCase() === identifier;
        const isEmailMatch = e.email?.toLowerCase() === identifier;
@@ -155,7 +180,6 @@ const App: React.FC = () => {
        const isPasswordMatch = e.password === pwd;
        return (isUsernameMatch || isEmailMatch || isNameMatch) && isPasswordMatch;
     });
-
     if (employee) {
       setIsAuthenticated(true);
       setCurrentUser({
@@ -170,25 +194,42 @@ const App: React.FC = () => {
       return;
     }
 
-    // Legacy Client Logic
-    const matchedProjects = projects.filter(p => 
-      p.clientUsername && 
-      p.clientUsername.toLowerCase() === identifier && 
-      p.clientPassword === pwd
+    // 4. Trustee Login
+    const trustee = MOCK_TRUSTEES.find(t => 
+        t.username?.toLowerCase() === identifier &&
+        t.password === pwd
     );
+    if (trustee) {
+        setIsAuthenticated(true);
+        setCurrentUser({
+            id: trustee.id,
+            name: trustee.name,
+            role: UserRole.TRUSTEE,
+            email: '', // Not strictly needed
+            avatar: trustee.avatar || '',
+            trusteeId: trustee.id
+        });
+        setCurrentTrustee(trustee);
+        return;
+    }
 
-    if (matchedProjects.length > 0) {
-      const firstProject = matchedProjects[0];
-      setIsAuthenticated(true);
-      setCurrentUser({
-        id: `client-${firstProject.clientUsername}`,
-        name: firstProject.clientName,
-        role: UserRole.CLIENT,
-        email: emailOrUsername,
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${firstProject.clientName}`,
-        clientUsername: firstProject.clientUsername
-      });
-      return;
+    // 5. Investor Login
+    const investor = MOCK_INVESTORS.find(inv => 
+        inv.username?.toLowerCase() === identifier &&
+        inv.password === pwd
+    );
+    if (investor) {
+        setIsAuthenticated(true);
+        setCurrentUser({
+            id: investor.id,
+            name: investor.name,
+            role: UserRole.INVESTOR,
+            email: investor.email || '',
+            avatar: investor.avatar || '',
+            investorId: investor.id
+        });
+        setCurrentInvestor(investor);
+        return;
     }
 
     alert("بيانات الدخول غير صحيحة");
@@ -198,6 +239,8 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
     setCurrentEmployee(null);
+    setCurrentTrustee(null);
+    setCurrentInvestor(null);
   };
 
   const handleViewClientProjects = (client: Client) => {
@@ -206,20 +249,17 @@ const App: React.FC = () => {
   };
 
   const handleViewProjectDetails = (project: Project) => {
-    // IMPORTANT: Always find the latest version from the global state
     const latestProject = projects.find(p => p.id === project.id) || project;
     setSelectedProjectForDetails(latestProject);
     setCurrentPage('project-details');
   };
 
-  // Helper to update a single project in the global list
   const handleUpdateProject = (updatedProject: Project) => {
       const updatedList = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
       setProjects(updatedList);
-      setSelectedProjectForDetails(updatedProject); // Ensure detail view sees update
+      setSelectedProjectForDetails(updatedProject); 
   };
 
-  // Global Search Handler
   const handleGlobalSearchSelect = (item: SearchResultItem) => {
     if (item.type === 'project') {
        handleViewProjectDetails(item.data);
@@ -232,9 +272,33 @@ const App: React.FC = () => {
     }
   };
 
+  // --- ROUTING GUARD ---
+  useEffect(() => {
+      if (!isAuthenticated || !currentUser) return;
+      if (['dashboard', 'notifications', 'client-details', 'project-details'].includes(currentPage)) return; 
+      
+      const moduleMap: Record<string, SystemModule> = {
+          'transactions_syp': 'transactions',
+          'messages': 'dashboard',
+          'manager_reports': 'hr',
+      };
+      
+      const moduleToCheck = moduleMap[currentPage] || currentPage as SystemModule;
+      
+      if ([UserRole.CLIENT, UserRole.EMPLOYEE, UserRole.TRUSTEE, UserRole.INVESTOR].includes(currentUser.role)) return;
+
+      if (!hasPermission(moduleToCheck)) {
+          console.warn(`Access denied to ${currentPage} for role ${currentUser.role}`);
+          setCurrentPage('dashboard');
+      }
+  }, [currentPage, currentUser, permissions]);
+
+
   if (!isAuthenticated || !currentUser) {
     return <LoginScreen onLogin={handleLogin} />;
   }
+
+  // --- ROLE BASED REDIRECTION ---
 
   if (currentUser.role === UserRole.CLIENT && currentUser.clientUsername) {
     return (
@@ -254,19 +318,49 @@ const App: React.FC = () => {
     );
   }
 
+  if (currentUser.role === UserRole.TRUSTEE && currentTrustee) {
+      return (
+          <TrusteePortal 
+            trustee={currentTrustee}
+            onLogout={handleLogout}
+          />
+      );
+  }
+
+  if (currentUser.role === UserRole.INVESTOR && currentInvestor) {
+      return (
+          <InvestorPortal 
+            investor={currentInvestor}
+            onLogout={handleLogout}
+          />
+      );
+  }
+
   const renderContent = () => {
+    const check = (module: SystemModule, component: React.ReactNode) => {
+        return hasPermission(module) ? component : (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-center">
+                <div className="bg-red-50 p-6 rounded-full mb-4"><span className="text-4xl">🚫</span></div>
+                <h2 className="text-xl font-bold text-gray-800">غير مصرح لك بالوصول</h2>
+                <p className="text-gray-500 mt-2">ليس لديك الصلاحية لعرض هذه الصفحة. يرجى مراجعة المدير العام.</p>
+                <button onClick={() => setCurrentPage('dashboard')} className="mt-6 text-primary-600 hover:underline">عودة للرئيسية</button>
+            </div>
+        );
+    };
+
     switch (currentPage) {
-      case 'dashboard': return <Dashboard onNavigate={setCurrentPage} />;
+      case 'dashboard': return <Dashboard onNavigate={setCurrentPage} selectedYear={selectedFiscalYear} />;
       case 'projects': 
-        return (
+        return check('projects', (
           <Projects 
             projects={projects} 
             onUpdateProjects={setProjects} 
             onViewDetails={handleViewProjectDetails} 
+            currentUser={currentUser} // Passed for logging
           />
-        );
+        ));
       case 'project-details': 
-        if (!selectedProjectForDetails) return <Projects projects={projects} onUpdateProjects={setProjects} onViewDetails={handleViewProjectDetails} />;
+        if (!selectedProjectForDetails) return <Projects projects={projects} onUpdateProjects={setProjects} onViewDetails={handleViewProjectDetails} currentUser={currentUser} />;
         return (
           <ProjectDetails 
             project={selectedProjectForDetails} 
@@ -274,28 +368,33 @@ const App: React.FC = () => {
             onBack={() => setCurrentPage('projects')} 
           />
         );
-      case 'clients': return <Clients onViewProjects={handleViewClientProjects} />;
+      case 'clients': return check('clients', <Clients onViewProjects={handleViewClientProjects} currentUser={currentUser} />);
       case 'client-details':
-        if (!selectedClientForDetails) return <Clients onViewProjects={handleViewClientProjects} />;
+        if (!selectedClientForDetails) return <Clients onViewProjects={handleViewClientProjects} currentUser={currentUser} />;
         return (
           <ClientDetails 
             client={selectedClientForDetails} 
-            projects={projects} // Pass live projects data
+            projects={projects} 
             onBack={() => setCurrentPage('clients')} 
             onViewProjectDetails={handleViewProjectDetails} 
           />
         );
-      case 'transactions': return <Transactions />;
-      case 'transactions_syp': return <TransactionsSYP />;
-      case 'invoices': return <Invoices />;
-      case 'messages': return <Messages />; // NEW PAGE
-      case 'settings': return <Settings />;
-      case 'reports': return <Reports />;
-      case 'hr': return <HR employees={employees} onUpdateEmployees={setEmployees} />;
-      case 'manager_reports': return <ManagerReports employees={employees} />;
-      case 'files': return <Files />;
+      case 'transactions': return check('transactions', <Transactions selectedYear={selectedFiscalYear} currentUser={currentUser} />);
+      case 'company_expenses': return check('company_expenses', <CompanyExpenses selectedYear={selectedFiscalYear} />); 
+      case 'profit_loss': return check('profit_loss', <ProfitLoss selectedYear={selectedFiscalYear} />); 
+      case 'trusts': return check('trusts', <Trusts />); 
+      case 'investors': return check('investors', <Investors />);
+      case 'transactions_syp': return check('transactions', <TransactionsSYP />);
+      case 'invoices': return check('invoices', <Invoices currentUser={currentUser} />);
+      case 'messages': return <Messages />; 
+      case 'settings': return check('settings', <Settings permissions={permissions} onUpdatePermissions={setPermissions} currentUser={currentUser} />);
+      case 'reports': return check('reports', <Reports selectedYear={selectedFiscalYear} />);
+      case 'hr': return check('hr', <HR employees={employees} onUpdateEmployees={setEmployees} />);
+      case 'manager_reports': return check('hr', <ManagerReports employees={employees} />);
+      case 'files': return check('files', <Files />);
+      case 'activity_log': return check('activity_log', <ActivityLogs />);
       case 'notifications': return <Notifications />;
-      default: return <Dashboard onNavigate={setCurrentPage} />;
+      default: return <Dashboard onNavigate={setCurrentPage} selectedYear={selectedFiscalYear} />;
     }
   };
 
@@ -306,6 +405,9 @@ const App: React.FC = () => {
       currentPage={currentPage === 'client-details' ? 'clients' : currentPage === 'project-details' ? 'projects' : currentPage}
       onNavigate={setCurrentPage}
       onSearchSelect={handleGlobalSearchSelect}
+      selectedYear={selectedFiscalYear}
+      onYearChange={setSelectedFiscalYear}
+      permissions={permissions} 
     >
       {renderContent()}
     </Layout>

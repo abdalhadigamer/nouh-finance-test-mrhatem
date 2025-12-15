@@ -48,10 +48,11 @@ export const formatCurrency = (amount: number, currencyCode: 'USD' | 'SYP' = 'US
     }).format(amount).replace('SYP', 'ل.س');
   }
 
-  // Default to USD
+  // Default to USD - Now supports decimals up to 2 digits
   return new Intl.NumberFormat('en-US', { 
     style: 'currency', 
     currency: 'USD',
-    maximumFractionDigits: 0
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2
   }).format(amount);
 };

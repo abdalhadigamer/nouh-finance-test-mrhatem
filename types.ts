@@ -6,7 +6,32 @@ export enum UserRole {
   ENGINEER = 'Engineer',
   PROCUREMENT = 'Procurement',
   CLIENT = 'Client',
-  EMPLOYEE = 'Employee'
+  EMPLOYEE = 'Employee',
+  TRUSTEE = 'Trustee',
+  INVESTOR = 'Investor'
+}
+
+export type SystemModule = 
+  | 'dashboard'
+  | 'financial_stats' // Specific permission to see totals/profits on dashboard
+  | 'projects'
+  | 'clients'
+  | 'company_expenses'
+  | 'profit_loss'
+  | 'investors'
+  | 'trusts'
+  | 'invoices'
+  | 'transactions'
+  | 'reports'
+  | 'hr'
+  | 'files'
+  | 'settings'
+  | 'activity_log'; // NEW: Audit Log Module
+
+export interface RolePermissions {
+  role: UserRole;
+  canView: SystemModule[];
+  canEdit?: SystemModule[];
 }
 
 export enum EmployeeType {
@@ -36,10 +61,12 @@ export enum ContractType {
   LUMP_SUM = 'مبلغ مقطوع (Lump Sum)'
 }
 
+// Simplified Invoice Type - All are purchases/expenses
 export enum InvoiceType {
-  SALES = 'مبيعات',
-  PURCHASE = 'مشتريات',
-  SUPPLIER = 'موردين'
+  PURCHASE = 'مشتريات مواد',
+  SERVICE = 'خدمات',
+  EXPENSE = 'مصاريف أخرى',
+  SALES = 'مبيعات'
 }
 
 export enum TransactionType {
@@ -47,6 +74,19 @@ export enum TransactionType {
   PAYMENT = 'سند صرف',
   TRANSFER = 'تحويل',
   JOURNAL = 'قيد يومية'
+}
+
+// NEW: Activity Log Interface
+export interface ActivityLog {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole | string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'APPROVE' | 'REJECT';
+  entity: 'Transaction' | 'Invoice' | 'Project' | 'Client' | 'Employee' | 'Settings';
+  entityId?: string;
+  description: string;
+  timestamp: string; // ISO String
 }
 
 export interface AppDocument {
@@ -74,6 +114,9 @@ export interface User {
   email: string;
   clientUsername?: string; 
   employeeId?: string; 
+  trusteeId?: string;
+  investorId?: string; // New Link
+  password?: string; // For mock login simulation
 }
 
 export interface Client {
@@ -89,23 +132,82 @@ export interface Client {
   documents?: AppDocument[];
 }
 
-// New Interface for Agreements
-export interface Agreement {
+export interface Trustee {
   id: string;
-  employeeId: string; // Link to Craftsman/Worker
-  employeeName?: string; // Helper
-  title: string; // e.g. "اتفاقية أعمال سباكة كاملة"
-  amount: number; // Total Agreed Amount
-  date: string;
-  attachmentUrl?: string; // Contract Image/PDF
+  name: string;
+  relation: string; 
+  phone: string;
+  avatar?: string;
+  notes?: string;
+  username?: string;
+  password?: string;
 }
 
-// New Interface for Notes
+export interface TrustTransaction {
+  id: string;
+  trusteeId: string;
+  type: 'Deposit' | 'Withdrawal'; 
+  amount: number;
+  date: string;
+  notes: string;
+  attachmentUrl?: string;
+}
+
+// NEW: Investor Interface Updated
+export interface Investor {
+  id: string;
+  name: string;
+  type: 'Capital' | 'Partner'; // Capital = Money only, Partner = Work/Effort
+  agreementDetails: string; 
+  profitPercentage?: number; // NEW: For Capital Investors (Global %)
+  linkedProjectIds?: string[]; // NEW: For Partner Investors (Specific Projects)
+  phone: string;
+  email?: string;
+  avatar?: string;
+  joinDate: string;
+  username?: string;
+  password?: string;
+}
+
+// NEW: Investor Transaction (Capital vs Profit vs Withdrawal)
+export interface InvestorTransaction {
+  id: string;
+  investorId: string;
+  type: 'Capital_Injection' | 'Profit_Distribution' | 'Withdrawal';
+  amount: number;
+  date: string;
+  notes: string;
+  projectId?: string; // If profit is from a specific project
+}
+
+export interface Agreement {
+  id: string;
+  employeeId: string; 
+  employeeName?: string; 
+  title: string; 
+  type: 'file' | 'text'; // Updated to support text contracts
+  content?: string; // Content for text contracts
+  amount: number; 
+  date: string;
+  attachmentUrl?: string; 
+}
+
 export interface ProjectNote {
   id: string;
   content: string;
   date: string;
   author?: string;
+}
+
+export interface StatementColumn {
+  id: string;
+  label: string; 
+  type: 'text' | 'number';
+}
+
+export interface StatementRow {
+  id: string;
+  [key: string]: any; 
 }
 
 export interface Project {
@@ -117,7 +219,7 @@ export interface Project {
   estimatedCost?: number; 
   contractType?: ContractType; 
   companyPercentage?: number;
-  agreedLaborBudget?: number; // NEW FIELD: Fix the labor cost for Lump Sum
+  agreedLaborBudget?: number; 
   location: string;
   status: ProjectStatus;
   type: ProjectType;
@@ -127,51 +229,71 @@ export interface Project {
   expenses: number;
   clientUsername?: string;
   clientPassword?: string;
-  // New Fields
   agreements?: Agreement[];
   notes?: ProjectNote[];
-  // Workshop Fund Features
-  workshopBalance?: number; // Current money available in the workshop fund
-  workshopThreshold?: number; // The "Zero Point" or minimum alert limit
+  statementColumns?: StatementColumn[];
+  statementRows?: StatementRow[]; 
+  workshopBalance?: number; 
+  workshopThreshold?: number; 
+}
+
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  [key: string]: any; 
 }
 
 export interface Invoice {
   id: string;
-  invoiceNumber: string;
-  date: string;
+  invoiceNumber: string; 
+  systemSerial?: string; 
+  date: string; 
   projectId: string; 
-  amount: number;
-  type: InvoiceType;
-  category: string; 
+  supplierName: string; 
+  supplierOrClient?: string; 
+  items: InvoiceItem[];
+  subtotal: number;
+  discount: number;
+  totalAmount: number; 
+  amount: number; 
   status: 'Paid' | 'Pending' | 'Overdue';
-  attachmentUrl?: string;
-  attachments?: AppDocument[];
-  supplierOrClient?: string;
-  relatedEmployeeId?: string; 
+  attachmentUrl?: string; 
+  attachments?: string[]; 
+  customColumns?: StatementColumn[];
+  notes?: string;
+  type?: InvoiceType;
+  category?: string;
+  relatedEmployeeId?: string;
+  isClientVisible?: boolean; 
 }
 
 export interface Transaction {
   id: string;
+  serialNumber?: number; 
   type: TransactionType;
-  date: string; // Entry Date (Visible to Client immediately)
+  date: string; 
   amount: number;
   currency: 'USD' | 'SYP'; 
   description: string;
   projectId?: string;
+  statementItemId?: string; 
   referenceId?: string; 
   fromAccount: string;
   toAccount: string;
   attachmentUrl?: string; 
-  recipientType?: 'Staff' | 'Craftsman' | 'Worker' | 'Client' | 'Supplier' | 'Other'; 
+  // Expanded recipient types to support Investors and Trustees
+  recipientType?: 'Staff' | 'Craftsman' | 'Worker' | 'Client' | 'Supplier' | 'Investor' | 'Trustee' | 'Other'; 
   recipientId?: string; 
   recipientName?: string;
-  
-  // Settlement Logic
-  status?: 'Completed' | 'Pending_Settlement'; // Completed = Paid from Main Treasury/Finalized. Pending = Paid from Workshop, needs reimbursement.
-  actualPaymentDate?: string; // The real date money left the Main Treasury
+  status?: 'Completed' | 'Pending_Settlement'; 
+  actualPaymentDate?: string; 
+  hasLinkedInvoice?: boolean;
 }
 
-// Union type for mixed tables (Ledger)
 export type LedgerEntry = 
   | (Invoice & { rowType: 'invoice' }) 
   | (Transaction & { rowType: 'payment' | 'receipt' | 'transfer' });
@@ -202,6 +324,11 @@ export interface Employee {
   documents?: AppDocument[];
 }
 
+export interface PayrollItem {
+  name: string;
+  amount: number;
+}
+
 export interface PayrollRecord {
   id: string;
   employeeId: string;
@@ -209,8 +336,8 @@ export interface PayrollRecord {
   month: string;
   year: number;
   basicSalary: number;
-  allowances: number; 
-  deductions: number; 
+  allowanceList: PayrollItem[]; 
+  deductionList: PayrollItem[]; 
   netSalary: number;
   status: 'Paid' | 'Pending';
   paymentDate?: string;

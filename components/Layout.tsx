@@ -22,9 +22,15 @@ import {
   Sun,
   PenTool,
   Coins,
-  MessageSquare
+  MessageSquare,
+  CalendarRange,
+  Building2,
+  Shield,
+  TrendingUp,
+  BarChart4,
+  Activity // Added Activity Icon
 } from 'lucide-react';
-import { User, UserRole } from '../types';
+import { User, UserRole, RolePermissions } from '../types';
 import { MOCK_NOTIFICATIONS, MOCK_PROJECTS, MOCK_CLIENTS, MOCK_EMPLOYEES, MOCK_INVOICES } from '../constants';
 import { formatCurrency } from '../services/dataService';
 
@@ -43,9 +49,12 @@ interface LayoutProps {
   currentPage: string;
   onNavigate: (page: string) => void;
   onSearchSelect?: (item: SearchResultItem) => void;
+  selectedYear: number;
+  onYearChange: (year: number) => void;
+  permissions: RolePermissions[];
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate, onSearchSelect }) => {
+const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate, onSearchSelect, selectedYear, onYearChange, permissions }) => {
   // Mobile sidebar state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   // Desktop sidebar state
@@ -62,6 +71,10 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
   const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Generate Year Options (e.g., Current Year - 2 to Current Year + 1)
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 3 + i); // 2021 to 2025
 
   useEffect(() => {
     // Check system preference
@@ -129,7 +142,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
     
     // Invoices
     MOCK_INVOICES.forEach(inv => {
-       if (inv.invoiceNumber.toLowerCase().includes(query) || inv.supplierOrClient?.toLowerCase().includes(query)) {
+       if (inv.invoiceNumber.toLowerCase().includes(query) || inv.supplierName.toLowerCase().includes(query) || inv.supplierOrClient?.toLowerCase().includes(query)) {
            results.push({ id: inv.id, type: 'invoice', title: inv.invoiceNumber, subtitle: `${inv.type} - ${formatCurrency(inv.amount)}`, data: inv });
        }
     });
@@ -159,7 +172,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
     { id: 'dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
     { id: 'projects', label: 'إدارة المشاريع', icon: Briefcase },
     { id: 'clients', label: 'العملاء', icon: UserCircle }, 
-    { id: 'messages', label: 'الرسائل والمحادثات', icon: MessageSquare }, // NEW ITEM
+    { id: 'company_expenses', label: 'مصاريف الشركة', icon: Building2 },
+    { id: 'profit_loss', label: 'الأرباح والخسائر', icon: BarChart4 }, 
+    { id: 'investors', label: 'المستثمرين والشركاء', icon: TrendingUp },
+    { id: 'trusts', label: 'الأمانات والودائع', icon: Shield },
+    { id: 'messages', label: 'الرسائل والمحادثات', icon: MessageSquare },
     { id: 'invoices', label: 'الفواتير', icon: FileText },
     { id: 'transactions', label: 'الحركات المالية $', icon: ArrowRightLeft },
     { id: 'transactions_syp', label: 'الحركات المالية ل.س', icon: Coins },
@@ -167,6 +184,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
     { id: 'hr', label: 'الموارد البشرية', icon: Users },
     { id: 'manager_reports', label: 'التقارير والدوام', icon: ClipboardList },
     { id: 'files', label: 'الأرشيف الإلكتروني', icon: Files },
+    { id: 'activity_log', label: 'سجل العمليات', icon: Activity }, // NEW ITEM
+    { id: 'settings', label: 'الإعدادات', icon: SettingsIcon },
   ];
 
   const handleNav = (id: string) => {
@@ -175,6 +194,21 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
   };
 
   const activeNotifications = MOCK_NOTIFICATIONS.filter(n => !n.isRead).length;
+
+  // Filter Menu Items based on permissions
+  const userPermissions = permissions.find(p => p.role === user.role);
+  const visibleMenuItems = menuItems.filter(item => {
+      // Always allow messages if not specified (optional) or restrict it?
+      // Assuming 'messages' wasn't in the enum, so show it for everyone or map it.
+      // Mapping special cases or defaults:
+      if (item.id === 'messages' || item.id === 'transactions_syp') return true; 
+      
+      // Special: manager_reports is usually HR
+      if (item.id === 'manager_reports') return userPermissions?.canView.includes('hr');
+
+      // Default check against permission list
+      return userPermissions ? userPermissions.canView.includes(item.id as any) : true;
+  });
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-dark-900 overflow-hidden transition-colors duration-300">
@@ -221,11 +255,10 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-6 overflow-x-hidden custom-scrollbar">
           <ul className="space-y-1 px-3">
-            {menuItems.map((item) => {
+            {visibleMenuItems.map((item) => {
               const Icon = item.icon;
               const active = currentPage === item.id;
-              if (item.id === 'manager_reports' && user.role === UserRole.CLIENT) return null;
-
+              
               return (
                 <li key={item.id}>
                   <button
@@ -307,18 +340,35 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
             </button>
 
             <h2 className="text-xl font-bold text-gray-800 dark:text-white hidden md:block">
-              {menuItems.find(i => i.id === currentPage)?.label || (currentPage === 'notifications' ? 'مركز الإشعارات' : 'الإعدادات')}
+              {menuItems.find(i => i.id === currentPage)?.label || (currentPage === 'notifications' ? 'مركز الإشعارات' : (currentPage === 'client-details' ? 'تفاصيل العميل' : ''))}
             </h2>
           </div>
 
           <div className="flex items-center gap-3 md:gap-5">
+            
+            {/* Fiscal Year Selector */}
+            <div className="hidden md:flex items-center bg-gray-50 dark:bg-dark-800 rounded-lg border border-gray-200 dark:border-dark-700 p-1">
+                <div className="px-2 text-gray-400 dark:text-gray-500">
+                    <CalendarRange size={16} />
+                </div>
+                <select 
+                    value={selectedYear} 
+                    onChange={(e) => onYearChange(Number(e.target.value))}
+                    className="bg-transparent text-sm font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer py-1 pr-1 pl-2"
+                >
+                    {yearOptions.map(year => (
+                        <option key={year} value={year}>{year}</option>
+                    ))}
+                </select>
+            </div>
+
             {/* Search */}
             <div className="relative hidden md:block group" ref={searchRef}>
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary-500 w-4 h-4 transition-colors" />
               <input 
                 type="text" 
                 placeholder="بحث سريع (مشروع، عميل، موظف)..." 
-                className="pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 w-72 bg-gray-50 dark:bg-dark-900 dark:text-white focus:bg-white dark:focus:bg-dark-950 transition-all"
+                className="pl-4 pr-10 py-2.5 border border-gray-200 dark:border-dark-700 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 w-72 bg-gray-50 dark:bg-dark-900 dark:text-white focus:bg-white dark:focus:bg-dark-950 transition-all"
                 value={searchQuery}
                 onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -413,12 +463,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
               )}
             </div>
 
-            <button 
-              className={`p-2.5 rounded-full transition-colors ${currentPage === 'settings' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-800'}`}
-              onClick={() => onNavigate('settings')}
-            >
-              <SettingsIcon size={20} />
-            </button>
+            {visibleMenuItems.some(i => i.id === 'settings') && (
+              <button 
+                className={`p-2.5 rounded-full transition-colors ${currentPage === 'settings' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-800'}`}
+                onClick={() => onNavigate('settings')}
+              >
+                <SettingsIcon size={20} />
+              </button>
+            )}
           </div>
         </header>
 
