@@ -309,7 +309,7 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onDelet
   const showTransitionForm = projectToMove?.status === ProjectStatus.DESIGN && targetStage === ProjectStatus.EXECUTION;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white">إدارة المشاريع</h1>
@@ -341,23 +341,28 @@ const Projects: React.FC<ProjectsProps> = ({ projects, onUpdateProjects, onDelet
       <div className="bg-white dark:bg-dark-900 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800">
         <div className="relative max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input type="text" placeholder="بحث عن مشروع..." className="w-full pl-4 pr-10 py-3 border border-gray-200 dark:border-dark-700 rounded-xl outline-none dark:bg-dark-950 dark:text-white" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <input type="text" placeholder="بحث عن مشروع..." className="w-full pl-4 pr-10 py-3 border border-gray-200 dark:border-dark-700 rounded-xl outline-none dark:bg-dark-950 dark:text-white focus:ring-2 focus:ring-primary-500 transition-shadow" value={filter} onChange={(e) => setFilter(e.target.value)} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredProjects.map((project) => (
-            <div key={project.id} onClick={() => handleProjectClick(project)} className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 hover:shadow-lg transition-all flex flex-col relative group cursor-pointer">
+          {filteredProjects.map((project, idx) => (
+            <div 
+                key={project.id} 
+                onClick={() => handleProjectClick(project)} 
+                className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col relative group cursor-pointer animate-in slide-in-from-bottom-4 fade-in fill-mode-backwards"
+                style={{ animationDelay: `${idx * 100}ms` }}
+            >
               <div className="p-6 flex-1">
                 <div className="flex justify-between items-start mb-4">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(project.status)}`}>{project.status === ProjectStatus.DELAYED ? 'مؤجل' : project.status}</span>
-                  <div className="flex gap-1 z-10">
+                  <div className="flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                        <button onClick={(e) => openMoveStageModal(e, project)} className="text-gray-400 hover:text-green-600 p-1.5" title="نقل لمرحلة أخرى"><ArrowRightCircle size={18} /></button>
                        <button onClick={(e) => openEditProjectModal(e, project)} className="text-gray-400 hover:text-primary-600 p-1.5" title="تعديل"><Edit3 size={18} /></button>
                        <button onClick={(e) => handleDeleteClick(e, project.id)} className="text-gray-400 hover:text-red-600 p-1.5" title="حذف المشروع"><Trash2 size={18} /></button>
                    </div>
                 </div>
-                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-1">{project.name}</h3>
+                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-primary-600 transition-colors">{project.name}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{project.clientName}</p>
                 <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400"><DollarSign size={16} /><span className="font-semibold">{formatCurrency(project.budget)}</span></div>
               </div>

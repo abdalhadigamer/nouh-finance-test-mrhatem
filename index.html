@@ -24,6 +24,19 @@
       .dark body {
         background-color: #020617; /* dark-950 */
       }
+      
+      /* Subtle Grid Pattern */
+      .bg-grid-pattern {
+        background-color: transparent;
+        background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+        background-size: 24px 24px;
+        opacity: 0.4;
+      }
+      .dark .bg-grid-pattern {
+        background-image: radial-gradient(#334155 1px, transparent 1px);
+        opacity: 0.2;
+      }
+
       /* Custom scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
@@ -140,6 +153,20 @@
                 800: '#1e293b',
                 900: '#0f172a',
                 950: '#020617',
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'slide-up': 'slideUp 0.5s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
               }
             }
           }

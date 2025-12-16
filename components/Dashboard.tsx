@@ -32,7 +32,7 @@ interface DashboardProps {
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white dark:bg-dark-800 p-4 rounded-xl shadow-xl border border-gray-100 dark:border-dark-700 text-right">
+      <div className="bg-white dark:bg-dark-800 p-4 rounded-xl shadow-xl border border-gray-100 dark:border-dark-700 text-right animate-in fade-in zoom-in-95 duration-200">
         <p className="font-bold text-gray-800 dark:text-white mb-2">{label}</p>
         {payload.map((entry, index) => (
           <div key={index} className="flex items-center gap-2 text-sm mb-1 last:mb-0">
@@ -104,17 +104,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
   if (!stats) return <div className="flex justify-center p-10"><span className="loading-spinner text-primary-600">جاري التحميل...</span></div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       
       {/* Year Indicator Banner */}
-      <div className="bg-primary-50 dark:bg-primary-900/10 border border-primary-100 dark:border-primary-800 p-3 rounded-xl flex justify-center items-center gap-2 text-primary-700 dark:text-primary-300 font-bold text-sm">
+      <div className="bg-primary-50 dark:bg-primary-900/10 border border-primary-100 dark:border-primary-800 p-3 rounded-xl flex justify-center items-center gap-2 text-primary-700 dark:text-primary-300 font-bold text-sm shadow-sm">
           <span>أنت تشاهد البيانات المالية لسنة:</span>
           <span className="bg-white dark:bg-dark-900 px-3 py-0.5 rounded-lg shadow-sm border border-primary-100 dark:border-primary-900 text-lg">{selectedYear}</span>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-md transition-shadow cursor-default">
+        <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards delay-75">
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">إجمالي الإيرادات</p>
             <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{formatCurrency(stats.totalRevenue)}</h3>
@@ -124,7 +124,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
           </div>
         </div>
 
-        <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-md transition-shadow cursor-default">
+        <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards delay-100">
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">إجمالي المصروفات</p>
             <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{formatCurrency(stats.totalExpenses)}</h3>
@@ -134,7 +134,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
           </div>
         </div>
 
-        <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-md transition-shadow cursor-default">
+        <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards delay-150">
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">صافي الربح</p>
             <h3 className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -148,22 +148,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
 
         <div 
           onClick={() => onNavigate('projects')}
-          className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer group"
+          className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards delay-200"
         >
           <div>
             <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1 group-hover:text-primary-600 transition-colors">المشاريع النشطة</p>
             <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{stats.activeProjects}</h3>
           </div>
-          <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-full group-hover:bg-orange-100 transition-colors">
+          <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-full group-hover:bg-orange-100 dark:group-hover:bg-orange-900/30 transition-colors">
             <Briefcase className="text-orange-600 dark:text-orange-400 w-6 h-6" />
           </div>
         </div>
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 fade-in duration-500 delay-300">
         {/* Income vs Expense Chart */}
-        <div className="bg-white dark:bg-dark-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800">
+        <div className="bg-white dark:bg-dark-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 hover:shadow-md transition-shadow">
           <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6">التدفق النقدي ({selectedYear})</h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -178,19 +178,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:opacity-20" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:opacity-10" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8'}} />
                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8'}} />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="دخل" stroke="#16a34a" fillOpacity={1} fill="url(#colorIncome)" name="الدخل" />
-                <Area type="monotone" dataKey="مصروف" stroke="#3b82f6" fillOpacity={1} fill="url(#colorExpense)" name="المصروف" />
+                <Area type="monotone" dataKey="دخل" stroke="#16a34a" fillOpacity={1} fill="url(#colorIncome)" name="الدخل" animationDuration={1500} />
+                <Area type="monotone" dataKey="مصروف" stroke="#3b82f6" fillOpacity={1} fill="url(#colorExpense)" name="المصروف" animationDuration={1500} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Project Status or Alerts */}
-        <div className="bg-white dark:bg-dark-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 flex flex-col">
+        <div className="bg-white dark:bg-dark-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 flex flex-col hover:shadow-md transition-shadow">
           <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-orange-500" />
             تنبيهات وإشعارات
@@ -198,8 +198,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
           <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
             {/* Logic to show real alerts based on data can be added here. For now, showing empty state if no mock alerts are relevant to empty data */}
             {filteredInvoices.filter(i => i.status === 'Overdue').length > 0 ? (
-                 filteredInvoices.filter(i => i.status === 'Overdue').map(inv => (
-                    <div key={inv.id} className="p-4 bg-red-50 dark:bg-red-900/20 border-r-4 border-red-500 rounded-md">
+                 filteredInvoices.filter(i => i.status === 'Overdue').map((inv, idx) => (
+                    <div 
+                        key={inv.id} 
+                        className="p-4 bg-red-50 dark:bg-red-900/20 border-r-4 border-red-500 rounded-md animate-in slide-in-from-right-4 fade-in duration-300"
+                        style={{ animationDelay: `${idx * 100}ms` }}
+                    >
                         <div className="flex justify-between">
                             <h4 className="font-bold text-red-700 dark:text-red-400 text-sm">فاتورة متأخرة</h4>
                             <span className="text-xs text-red-600 dark:text-red-400">{inv.date}</span>
@@ -208,8 +212,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
                     </div>
                  ))
             ) : (
-                <div className="text-center text-gray-400 py-10">
-                    لا توجد تنبيهات نشطة حالياً
+                <div className="text-center text-gray-400 py-10 flex flex-col items-center gap-3">
+                    <div className="bg-gray-100 dark:bg-dark-800 p-4 rounded-full">
+                        <AlertCircle className="w-8 h-8 text-gray-300" />
+                    </div>
+                    <span>لا توجد تنبيهات نشطة حالياً</span>
                 </div>
             )}
           </div>
@@ -217,7 +224,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
       </div>
 
       {/* Recent Invoices Table */}
-      <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden">
+      <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-500 delay-500">
         <div className="p-6 border-b border-gray-100 dark:border-dark-800 flex justify-between items-center">
           <h3 className="text-lg font-bold text-gray-800 dark:text-white">آخر الفواتير المسجلة ({selectedYear})</h3>
           <button 

@@ -25,6 +25,7 @@ import TrusteePortal from './components/TrusteePortal';
 import InvestorPortal from './components/InvestorPortal'; 
 import ProfitLoss from './components/ProfitLoss'; 
 import ActivityLogs from './components/ActivityLogs'; 
+import AIAssistant from './components/AIAssistant'; // IMPORT AI COMPONENT
 import { MOCK_USERS, LOGO_URL, DEFAULT_PERMISSIONS, MOCK_ACTIVITY_LOGS } from './constants';
 import { User, UserRole, Client, Employee, Project, Trustee, Investor, RolePermissions, SystemModule, Invoice, Transaction, TransactionType, ActivityLog, TrustTransaction, InvestorTransaction } from './types';
 
@@ -415,6 +416,14 @@ const App: React.FC = () => {
       searchData={{ projects, clients, employees, invoices }}
     >
       {renderContent()}
+      
+      {/* INTEGRATED AI ASSISTANT */}
+      <AIAssistant 
+        projects={projects}
+        transactions={transactions}
+        invoices={invoices}
+        currentUser={currentUser}
+      />
     </Layout>
   );
 };
