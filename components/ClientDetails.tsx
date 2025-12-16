@@ -1,6 +1,6 @@
 
-import React, { useEffect, useState } from 'react';
-import { Project, Client, ProjectStatus } from '../types';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Project, Client, ProjectStatus, Transaction, TransactionType, ProjectType, ContractType } from '../types';
 import { formatCurrency } from '../services/dataService';
 import { 
   ArrowRight, 
@@ -18,11 +18,12 @@ import {
 interface ClientDetailsProps {
   client: Client;
   projects: Project[]; // Receive global projects state
+  transactions?: Transaction[]; // Receive transactions for accurate calculations
   onBack: () => void;
   onViewProjectDetails: (project: Project) => void;
 }
 
-const ClientDetails: React.FC<ClientDetailsProps> = ({ client, projects, onBack, onViewProjectDetails }) => {
+const ClientDetails: React.FC<ClientDetailsProps> = ({ client, projects, transactions = [], onBack, onViewProjectDetails }) => {
   const [clientProjects, setClientProjects] = useState<Project[]>([]);
 
   useEffect(() => {
@@ -31,10 +32,40 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ client, projects, onBack,
     setClientProjects(filtered);
   }, [client, projects]);
 
-  // Calculate Client Stats
-  const totalBudget = clientProjects.reduce((acc, curr) => acc + curr.budget, 0);
-  const totalPaid = clientProjects.reduce((acc, curr) => acc + curr.revenue, 0);
-  const totalRemaining = totalBudget - totalPaid; // Approximate for demo
+  // Calculate Client Stats (Detailed Logic)
+  const clientStats = useMemo(() => {
+      let totalBudget = 0;
+      let totalPaid = 0;
+      let totalRemaining = 0;
+
+      clientProjects.forEach(project => {
+          totalBudget += project.budget; // This is always the budget/estimated value
+          totalPaid += project.revenue;
+
+          const isDesignProject = project.status === ProjectStatus.DESIGN || project.type === ProjectType.DESIGN;
+          const isLumpSum = project.contractType === ContractType.LUMP_SUM;
+
+          if (isDesignProject || isLumpSum) {
+              // For Fixed Price Contracts: Remaining = Budget - Paid
+              totalRemaining += (project.budget - project.revenue);
+          } else {
+              // For Cost Plus (Execution): Remaining = (Actual Expenses + Fee) - Paid
+              // We need to calculate expenses from transactions for this specific project
+              const pTransactions = transactions.filter(t => t.projectId === project.id);
+              const pExpenses = pTransactions
+                  .filter(t => t.type === TransactionType.PAYMENT)
+                  .reduce((sum, t) => sum + t.amount, 0);
+              
+              const companyFee = (pExpenses * (project.companyPercentage || 0)) / 100;
+              const totalDue = pExpenses + companyFee;
+              
+              totalRemaining += (totalDue - project.revenue);
+          }
+      });
+
+      return { totalBudget, totalPaid, totalRemaining };
+  }, [clientProjects, transactions]);
+
   const activeProjectsCount = clientProjects.filter(p => p.status === ProjectStatus.EXECUTION || p.status === ProjectStatus.DESIGN).length;
 
   const getStatusColor = (status: ProjectStatus) => {
@@ -79,10 +110,10 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ client, projects, onBack,
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-start mb-2">
-            <p className="text-gray-500 text-sm">إجمالي العقود</p>
+            <p className="text-gray-500 text-sm">إجمالي العقود (التقديرية/الثابتة)</p>
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><DollarSign size={18}/></div>
           </div>
-          <h3 className="text-xl font-bold text-gray-800">{formatCurrency(totalBudget)}</h3>
+          <h3 className="text-xl font-bold text-gray-800">{formatCurrency(clientStats.totalBudget)}</h3>
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
@@ -90,15 +121,20 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ client, projects, onBack,
             <p className="text-gray-500 text-sm">المدفوعات المستلمة</p>
             <div className="p-2 bg-green-50 text-green-600 rounded-lg"><TrendingUp size={18}/></div>
           </div>
-          <h3 className="text-xl font-bold text-green-700">{formatCurrency(totalPaid)}</h3>
+          <h3 className="text-xl font-bold text-green-700">{formatCurrency(clientStats.totalPaid)}</h3>
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-start mb-2">
-            <p className="text-gray-500 text-sm">المتبقي (تقريبي)</p>
+            <p className="text-gray-500 text-sm">صافي المستحق (فعلي)</p>
             <div className="p-2 bg-orange-50 text-orange-600 rounded-lg"><PieChart size={18}/></div>
           </div>
-          <h3 className="text-xl font-bold text-orange-700">{formatCurrency(totalRemaining)}</h3>
+          <h3 className={`text-xl font-bold ${clientStats.totalRemaining > 0 ? 'text-orange-700' : 'text-green-600'}`}>
+              {formatCurrency(clientStats.totalRemaining)}
+          </h3>
+          <p className="text-[10px] text-gray-400 mt-1">
+              (التصميم: العقد - المقبوض | التنفيذ: (المصاريف+النسبة) - المقبوض)
+          </p>
         </div>
 
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">

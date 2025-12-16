@@ -1,18 +1,16 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ActivityLog, UserRole } from '../types';
-import { getLogs } from '../services/auditService';
 import { Search, User, Calendar, Tag, Activity, History } from 'lucide-react';
 
-const ActivityLogs: React.FC = () => {
-  const [logs, setLogs] = useState<ActivityLog[]>([]);
+interface ActivityLogsProps {
+    logs: ActivityLog[];
+}
+
+const ActivityLogs: React.FC<ActivityLogsProps> = ({ logs }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [filterAction, setFilterAction] = useState<string>('all');
-
-  useEffect(() => {
-    getLogs().then(setLogs);
-  }, []);
 
   // Filter Logic
   const filteredLogs = useMemo(() => {

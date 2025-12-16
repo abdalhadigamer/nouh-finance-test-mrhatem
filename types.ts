@@ -234,7 +234,9 @@ export interface Project {
   statementColumns?: StatementColumn[];
   statementRows?: StatementRow[]; 
   workshopBalance?: number; 
-  workshopThreshold?: number; 
+  workshopThreshold?: number;
+  previousStageFees?: number; // Stores Design Fees value
+  relatedProjectId?: string; // Stores ID of the linked project (e.g. Old Design Project ID)
 }
 
 export interface InvoiceItem {

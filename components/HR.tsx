@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import { Employee, PayrollRecord, AttendanceRecord, EmployeeType, Transaction, TransactionType, PayrollItem } from '../types';
-import { MOCK_PAYROLL, MOCK_ATTENDANCE, MOCK_TRANSACTIONS } from '../constants';
+import { Employee, PayrollRecord, EmployeeType, Transaction, TransactionType, PayrollItem } from '../types';
+import { MOCK_PAYROLL, MOCK_TRANSACTIONS } from '../constants';
 import { formatCurrency } from '../services/dataService';
 import { 
-  UserPlus, DollarSign, Clock, CheckCircle, Search, Edit, 
+  UserPlus, DollarSign, CheckCircle, Search, Edit, 
   Trash2, UserCog, Hammer, HardHat, Plus, X, FileText, Key, Lock,
   CheckSquare, AlertCircle
 } from 'lucide-react';
@@ -17,17 +17,13 @@ interface HRProps {
 }
 
 const HR: React.FC<HRProps> = ({ employees, onUpdateEmployees }) => {
-  // Tabs: 'staff', 'craftsmen', 'workers', 'payroll', 'attendance'
-  const [activeTab, setActiveTab] = useState<'staff' | 'craftsmen' | 'workers' | 'payroll' | 'attendance'>('staff');
+  // Tabs: 'staff', 'craftsmen', 'workers', 'payroll'
+  const [activeTab, setActiveTab] = useState<'staff' | 'craftsmen' | 'workers' | 'payroll'>('staff');
   
   // Data States
   const [payroll, setPayroll] = useState<PayrollRecord[]>(MOCK_PAYROLL);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>(MOCK_ATTENDANCE);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Attendance Sub-Tab
-  const [attendanceFilter, setAttendanceFilter] = useState<'Staff' | 'Worker'>('Staff');
-
   // Payroll Filter State
   const [selectedPayrollMonth, setSelectedPayrollMonth] = useState<string>(new Date().toLocaleString('ar-SA', { month: 'long' }));
   const [selectedPayrollYear, setSelectedPayrollYear] = useState<number>(new Date().getFullYear());
@@ -190,17 +186,10 @@ const HR: React.FC<HRProps> = ({ employees, onUpdateEmployees }) => {
       const net = (currentPayrollRecord.basicSalary || 0) + totalAllowances - totalDeductions;
 
       // Handle Post-Payment Editing
-      // If record was PAID and amount changed, we update it. 
-      // In a real system, you might create a "Diff Transaction", but here we just update the record
-      // allowing managers to add bonuses even after salary release.
-      
       const finalRecord: PayrollRecord = {
           ...currentPayrollRecord as PayrollRecord,
           id: currentPayrollRecord.id || `pay-${Date.now()}`,
           netSalary: net,
-          // Keep status as is (if editing a Paid record, keep it Paid unless manually changed?)
-          // Usually if amount changes after payment, it remains 'Paid' but accounting needs adjustment.
-          // For simplicity here: We update the record values.
       };
 
       if (currentPayrollRecord.id) {
@@ -374,7 +363,6 @@ const HR: React.FC<HRProps> = ({ employees, onUpdateEmployees }) => {
              { id: 'craftsmen', label: 'الحرفيين والموردين', icon: Hammer },
              { id: 'workers', label: 'عمال اليومية', icon: HardHat },
              { id: 'payroll', label: 'الرواتب', icon: DollarSign },
-             { id: 'attendance', label: 'الدوام', icon: Clock },
          ].map(tab => {
              const Icon = tab.icon;
              return (
@@ -573,85 +561,6 @@ const HR: React.FC<HRProps> = ({ employees, onUpdateEmployees }) => {
                      </table>
                  </div>
              </div>
-          </div>
-      )}
-
-      {/* 5. ATTENDANCE TAB */}
-      {activeTab === 'attendance' && (
-          <div className="space-y-4 animate-in fade-in">
-              <div className="flex gap-2">
-                  <button 
-                    onClick={() => setAttendanceFilter('Staff')} 
-                    className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${attendanceFilter === 'Staff' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-gray-200 text-gray-600 dark:bg-dark-800 dark:border-dark-700 dark:text-gray-400'}`}
-                  >
-                      الكادر الإداري
-                  </button>
-                  <button 
-                    onClick={() => setAttendanceFilter('Worker')} 
-                    className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${attendanceFilter === 'Worker' ? 'bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-300' : 'bg-white border-gray-200 text-gray-600 dark:bg-dark-800 dark:border-dark-700 dark:text-gray-400'}`}
-                  >
-                      عمال اليومية
-                  </button>
-              </div>
-
-              <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden">
-                 <div className="p-4 border-b border-gray-100 dark:border-dark-800 flex justify-between items-center">
-                     <h3 className="font-bold text-gray-800 dark:text-white">
-                         سجل الحضور - {attendanceFilter === 'Staff' ? 'الموظفين' : 'العمال'}
-                     </h3>
-                     <span className="text-sm text-gray-500">{new Date().toLocaleDateString('ar-SA')}</span>
-                 </div>
-                 <div className="overflow-x-auto">
-                     <table className="w-full text-sm text-right">
-                         <thead className="bg-gray-50 dark:bg-dark-800 text-gray-500 dark:text-gray-400">
-                             <tr>
-                                 <th className="px-6 py-4">الاسم</th>
-                                 <th className="px-6 py-4">التاريخ</th>
-                                 <th className="px-6 py-4">وقت الحضور</th>
-                                 <th className="px-6 py-4">وقت الانصراف</th>
-                                 <th className="px-6 py-4">ساعات العمل</th>
-                                 <th className="px-6 py-4">الحالة</th>
-                             </tr>
-                         </thead>
-                         <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-                             {attendance
-                                .filter(record => {
-                                    const emp = employees.find(e => e.id === record.employeeId);
-                                    // Match filter: Staff matches STAFF, Worker matches WORKER or CRAFTSMAN (if tracked)
-                                    if (attendanceFilter === 'Staff') return emp?.type === EmployeeType.STAFF;
-                                    return emp?.type === EmployeeType.WORKER;
-                                })
-                                .map(record => {
-                                 const emp = employees.find(e => e.id === record.employeeId);
-                                 return (
-                                     <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-dark-800">
-                                         <td className="px-6 py-4 flex items-center gap-3">
-                                            <img src={emp?.avatar} className="w-8 h-8 rounded-full" alt="" />
-                                            <div>
-                                                <span className="font-medium block">{emp?.name}</span>
-                                                <span className="text-xs text-gray-400">{emp?.role}</span>
-                                            </div>
-                                         </td>
-                                         <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{record.date}</td>
-                                         <td className="px-6 py-4 font-mono text-gray-600 dark:text-gray-400">{record.clockIn}</td>
-                                         <td className="px-6 py-4 font-mono text-gray-600 dark:text-gray-400">{record.clockOut || '-'}</td>
-                                         <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{record.totalHours || '-'}</td>
-                                         <td className="px-6 py-4">
-                                             <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                                 record.status === 'Present' ? 'bg-green-100 text-green-700' :
-                                                 record.status === 'Late' ? 'bg-yellow-100 text-yellow-700' :
-                                                 'bg-red-100 text-red-700'
-                                             }`}>
-                                                 {record.status === 'Present' ? 'حاضر' : record.status === 'Late' ? 'متأخر' : 'غائب'}
-                                             </span>
-                                         </td>
-                                     </tr>
-                                 );
-                             })}
-                         </tbody>
-                     </table>
-                 </div>
-              </div>
           </div>
       )}
 

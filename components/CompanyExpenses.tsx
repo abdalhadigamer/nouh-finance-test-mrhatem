@@ -1,31 +1,25 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Transaction, TransactionType } from '../types';
-import { MOCK_TRANSACTIONS } from '../constants';
 import { formatCurrency } from '../services/dataService';
 import { 
   Building2, 
   TrendingDown, 
   PlusCircle, 
   Search, 
-  Filter, 
-  ArrowUpRight, 
-  FileText,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  FileText
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import Modal from './Modal';
-import SearchableSelect from './SearchableSelect';
 
 interface CompanyExpensesProps {
     selectedYear?: number;
+    transactions: Transaction[];
+    onUpdateTransactions: (transactions: Transaction[]) => void;
 }
 
-const CompanyExpenses: React.FC<CompanyExpensesProps> = ({ selectedYear }) => {
-    // Local state to hold transactions + newly added ones in this session
-    // In a real app, this would come from the API directly.
-    // For this mock, we reference MOCK_TRANSACTIONS but need to trigger re-renders if we add new ones.
-    const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
+const CompanyExpenses: React.FC<CompanyExpensesProps> = ({ selectedYear, transactions, onUpdateTransactions }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -40,11 +34,6 @@ const CompanyExpenses: React.FC<CompanyExpensesProps> = ({ selectedYear }) => {
         projectId: 'General', // HARDCODED for this page
         date: new Date().toISOString().split('T')[0]
     });
-
-    useEffect(() => {
-        // Refresh when MOCK changes (simulated)
-        setTransactions([...MOCK_TRANSACTIONS]);
-    }, [isModalOpen]); // Refresh when modal closes
 
     // Filter Logic: Only 'General' / Overhead expenses
     const filteredExpenses = useMemo(() => {
@@ -105,8 +94,7 @@ const CompanyExpenses: React.FC<CompanyExpensesProps> = ({ selectedYear }) => {
             status: 'Completed'
         };
 
-        MOCK_TRANSACTIONS.unshift(expense); // Update Global Mock
-        setTransactions([expense, ...transactions]); // Update Local State
+        onUpdateTransactions([expense, ...transactions]);
         setIsModalOpen(false);
         setNewExpense({
             amount: 0,

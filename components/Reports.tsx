@@ -5,7 +5,6 @@ import {
   PieChart, Pie, Cell, TooltipProps
 } from 'recharts';
 import { formatCurrency } from '../services/dataService';
-import { MOCK_PROJECTS, MOCK_TRANSACTIONS, MOCK_EMPLOYEES, MOCK_TRUSTEES, MOCK_TRUST_TRANSACTIONS } from '../constants';
 import { 
   Download, 
   TrendingUp, 
@@ -21,10 +20,15 @@ import {
   CheckCircle,
   Coins
 } from 'lucide-react';
-import { TransactionType } from '../types';
+import { TransactionType, Project, Transaction, Employee, Trustee, TrustTransaction } from '../types';
 
 interface ReportsProps {
     selectedYear?: number;
+    projects: Project[];
+    transactions: Transaction[];
+    employees: Employee[];
+    trustees: Trustee[];
+    trustTransactions: TrustTransaction[];
 }
 
 // Custom Tooltip for Charts
@@ -48,7 +52,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   return null;
 };
 
-const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
+const Reports: React.FC<ReportsProps> = ({ selectedYear, projects, transactions, employees, trustees, trustTransactions }) => {
   const currentYear = selectedYear || new Date().getFullYear();
   
   // View Mode State
@@ -58,7 +62,7 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
 
   // --- 1. Filter Transactions based on Report Type (For Charts & General Stats) ---
   const filteredTransactions = useMemo(() => {
-      return MOCK_TRANSACTIONS.filter(t => {
+      return transactions.filter(t => {
           const tDate = new Date(t.date);
           
           if (reportType === 'annual') {
@@ -70,12 +74,12 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
               return t.date === selectedDay;
           }
       });
-  }, [currentYear, reportType, selectedMonth, selectedDay]);
+  }, [currentYear, reportType, selectedMonth, selectedDay, transactions]);
 
   // --- DAILY REPORT SPECIFIC CALCULATIONS ---
   const dailyReportData = useMemo(() => {
       // 1. Project Funds (Balances & Alerts)
-      const projectsFunds = MOCK_PROJECTS
+      const projectsFunds = projects
         .filter(p => p.workshopBalance !== undefined) // Only execution projects usually
         .map(p => ({
             id: p.id,
@@ -86,31 +90,28 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
         }));
       const totalProjectFunds = projectsFunds.reduce((sum, p) => sum + p.balance, 0);
 
-      // 2. Trusts (Amanat) - HANDLING BROKEN FUNDS (Negatives)
-      const trusts = MOCK_TRUSTEES.map(t => {
-          const txns = MOCK_TRUST_TRANSACTIONS.filter(x => x.trusteeId === t.id);
+      // 2. Trusts (Amanat)
+      const trustsData = trustees.map(t => {
+          const txns = trustTransactions.filter(x => x.trusteeId === t.id);
           const deposits = txns.filter(x => x.type === 'Deposit').reduce((sum, x) => sum + x.amount, 0);
           const withdrawals = txns.filter(x => x.type === 'Withdrawal').reduce((sum, x) => sum + x.amount, 0);
           return { name: t.name, balance: deposits - withdrawals };
-      }).filter(t => t.balance !== 0); // Include negatives (Broken funds)
+      }).filter(t => t.balance !== 0); 
       
-      // Calculate Total POSITIVE Cash held in Trusts
-      const totalTrustsCashHeld = trusts.filter(t => t.balance > 0).reduce((sum, t) => sum + t.balance, 0);
-      // Net display balance (just for the header)
-      const netTrustsBalance = trusts.reduce((sum, t) => sum + t.balance, 0);
+      const totalTrustsCashHeld = trustsData.filter(t => t.balance > 0).reduce((sum, t) => sum + t.balance, 0);
+      const netTrustsBalance = trustsData.reduce((sum, t) => sum + t.balance, 0);
 
-      // 3. Employee Petty Cash (Custody)
-      const employeeCustody = MOCK_EMPLOYEES
+      // 3. Employee Petty Cash
+      const employeeCustody = employees
         .filter(e => e.pettyCashBalance && e.pettyCashBalance > 0)
         .map(e => ({ name: e.name, balance: e.pettyCashBalance || 0 }));
       const totalCustody = employeeCustody.reduce((sum, e) => sum + e.balance, 0);
 
-      // 4. Pending Expenses (Pending Settlement)
-      const pendingTxns = MOCK_TRANSACTIONS.filter(t => t.status === 'Pending_Settlement' && t.type === TransactionType.PAYMENT);
-      // Group by Project
+      // 4. Pending Expenses
+      const pendingTxns = transactions.filter(t => t.status === 'Pending_Settlement' && t.type === TransactionType.PAYMENT);
       const pendingByProjectMap = new Map<string, number>();
       pendingTxns.forEach(t => {
-          const pName = MOCK_PROJECTS.find(p => p.id === t.projectId)?.name || 'مصاريف عامة';
+          const pName = projects.find(p => p.id === t.projectId)?.name || 'مصاريف عامة';
           const current = pendingByProjectMap.get(pName) || 0;
           pendingByProjectMap.set(pName, current + t.amount);
       });
@@ -118,16 +119,11 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
       const totalPendingExpenses = pendingTxns.reduce((sum, t) => sum + t.amount, 0);
 
       // 5. Main Treasury (Calculated dynamically)
-      // Main Treasury = Total Income (Completed) - Total Expense (Completed) - Transferred to Projects - Transferred to Petty Cash
-      // Simplified simulation for display:
-      const totalIncomeHistory = MOCK_TRANSACTIONS.filter(t => t.type === TransactionType.RECEIPT && t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0);
-      const totalExpenseHistory = MOCK_TRANSACTIONS.filter(t => t.type === TransactionType.PAYMENT && t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0);
+      const totalIncomeHistory = transactions.filter(t => t.type === TransactionType.RECEIPT && t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0);
+      const totalExpenseHistory = transactions.filter(t => t.type === TransactionType.PAYMENT && t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0);
       
       const simulatedMainTreasury = Math.max(0, (totalIncomeHistory - totalExpenseHistory) - totalProjectFunds - totalCustody); 
 
-      // 6. TOTAL CASH ON HAND (THE BIG NUMBER)
-      // This includes: Main Safe + Money in Projects + Money with Employees + POSITIVE Money in Trusts (Physical cash held)
-      // Negative Trusts (Broken Funds) are debts/receivables, not cash on hand.
       const totalCashOnHand = simulatedMainTreasury + totalProjectFunds + totalCustody + totalTrustsCashHeld;
 
       return {
@@ -135,27 +131,26 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
           mainTreasury: simulatedMainTreasury,
           projectsFunds,
           totalProjectFunds,
-          trusts,
+          trusts: trustsData,
           netTrustsBalance,
           employeeCustody,
           totalCustody,
           pendingExpensesList,
           totalPendingExpenses
       };
-  }, []);
+  }, [projects, transactions, employees, trustees, trustTransactions]);
 
-  // --- 2. Calculate Chart Data based on Report Type (Legacy Logic for Charts) ---
+  // --- 2. Calculate Chart Data ---
   const chartData = useMemo(() => {
       const data = [];
       
       if (reportType === 'annual') {
-          // Annual View: Show Months (Jan - Dec)
           const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
           for (let i = 0; i < 12; i++) {
               const monthPrefix = `${currentYear}-${String(i + 1).padStart(2, '0')}`;
-              const monthTxns = MOCK_TRANSACTIONS.filter(t => t.date.startsWith(monthPrefix));
-              const income = monthTxns.filter(t => t.type === 'سند قبض').reduce((sum, t) => sum + t.amount, 0);
-              const expense = monthTxns.filter(t => t.type === 'سند صرف').reduce((sum, t) => sum + t.amount, 0);
+              const monthTxns = transactions.filter(t => t.date.startsWith(monthPrefix));
+              const income = monthTxns.filter(t => t.type === TransactionType.RECEIPT).reduce((sum, t) => sum + t.amount, 0);
+              const expense = monthTxns.filter(t => t.type === TransactionType.PAYMENT).reduce((sum, t) => sum + t.amount, 0);
               data.push({
                   name: months[i],
                   إيرادات: income,
@@ -164,38 +159,36 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
               });
           }
       } else if (reportType === 'monthly') {
-          // Monthly View: Show Days (1 - 30/31)
           const daysInMonth = new Date(currentYear, selectedMonth + 1, 0).getDate();
           for (let i = 1; i <= daysInMonth; i++) {
               const dayStr = `${currentYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-              const dayTxns = MOCK_TRANSACTIONS.filter(t => t.date === dayStr);
-              const income = dayTxns.filter(t => t.type === 'سند قبض').reduce((sum, t) => sum + t.amount, 0);
-              const expense = dayTxns.filter(t => t.type === 'سند صرف').reduce((sum, t) => sum + t.amount, 0);
+              const dayTxns = transactions.filter(t => t.date === dayStr);
+              const income = dayTxns.filter(t => t.type === TransactionType.RECEIPT).reduce((sum, t) => sum + t.amount, 0);
+              const expense = dayTxns.filter(t => t.type === TransactionType.PAYMENT).reduce((sum, t) => sum + t.amount, 0);
               data.push({
-                  name: i.toString(), // Day number
+                  name: i.toString(),
                   إيرادات: income,
                   مصروفات: expense,
                   ربح: income - expense
               });
           }
       } 
-      // Daily view doesn't use this chart logic
       return data;
-  }, [currentYear, reportType, selectedMonth]);
+  }, [currentYear, reportType, selectedMonth, transactions]);
 
   // --- 3. Calculate Summaries ---
-  const totalIncome = filteredTransactions.filter(t => t.type === 'سند قبض').reduce((acc, curr) => acc + curr.amount, 0);
-  const totalExpense = filteredTransactions.filter(t => t.type === 'سند صرف').reduce((acc, curr) => acc + curr.amount, 0);
+  const totalIncome = filteredTransactions.filter(t => t.type === TransactionType.RECEIPT).reduce((acc, curr) => acc + curr.amount, 0);
+  const totalExpense = filteredTransactions.filter(t => t.type === TransactionType.PAYMENT).reduce((acc, curr) => acc + curr.amount, 0);
   
-  const projectExpenses = filteredTransactions.filter(t => t.type === 'سند صرف' && t.projectId && t.projectId !== 'General' && t.projectId !== 'N/A').reduce((acc, curr) => acc + curr.amount, 0);
-  const overheadExpenses = filteredTransactions.filter(t => t.type === 'سند صرف' && (!t.projectId || t.projectId === 'General' || t.projectId === 'N/A')).reduce((acc, curr) => acc + curr.amount, 0);
+  const projectExpenses = filteredTransactions.filter(t => t.type === TransactionType.PAYMENT && t.projectId && t.projectId !== 'General' && t.projectId !== 'N/A').reduce((acc, curr) => acc + curr.amount, 0);
+  const overheadExpenses = filteredTransactions.filter(t => t.type === TransactionType.PAYMENT && (!t.projectId || t.projectId === 'General' || t.projectId === 'N/A')).reduce((acc, curr) => acc + curr.amount, 0);
 
   const netProfit = totalIncome - totalExpense;
   const margin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0;
 
   // --- 4. Expense Distribution ---
   const expenseCategoryData = useMemo(() => {
-      const sourceTxns = filteredTransactions.filter(t => t.type === 'سند صرف');
+      const sourceTxns = filteredTransactions.filter(t => t.type === TransactionType.PAYMENT);
 
       const materials = sourceTxns.filter(t => t.description.includes('حديد') || t.description.includes('مواد') || t.description.includes('شراء') || t.description.includes('قرطاسية')).reduce((acc, t) => acc + t.amount, 0);
       const salaries = sourceTxns.filter(t => t.description.includes('راتب') || t.recipientType === 'Staff' || t.recipientType === 'Worker').reduce((acc, t) => acc + t.amount, 0);
@@ -212,8 +205,8 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
 
   const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-  // --- 5. Project Performance (Accumulated for Year/Month context) ---
-  const projectPerformance = MOCK_PROJECTS.map(p => ({
+  // --- 5. Project Performance ---
+  const projectPerformance = projects.map(p => ({
     name: p.name,
     budget: p.budget,
     profit: p.revenue - p.expenses,
@@ -298,7 +291,7 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
       {/* ---------------- DAILY REPORT VIEW (DETAILED CASH FLOW) ---------------- */}
       {reportType === 'daily' ? (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              
+              {/* Daily Report Content (Projects Funds, Trusts, etc.) */}
               {/* 1. TOTAL CASH (Top Hero Card) */}
               <div className="bg-gradient-to-r from-emerald-600 to-emerald-800 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
@@ -367,7 +360,7 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
                       </div>
                   </div>
 
-                  {/* 3. Trusts & Deposits (Right Column Top) */}
+                  {/* 3. Trusts & Deposits */}
                   <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden flex flex-col">
                       <div className="p-5 border-b border-gray-100 dark:border-dark-800 flex justify-between items-center bg-teal-50/50 dark:bg-teal-900/10">
                           <h3 className="font-bold text-teal-900 dark:text-teal-300 flex items-center gap-2">
@@ -400,76 +393,11 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
                           </table>
                       </div>
                   </div>
-
-                  {/* 4. Pending Expenses (Left Column Bottom) */}
-                  <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden flex flex-col">
-                      <div className="p-5 border-b border-gray-100 dark:border-dark-800 flex justify-between items-center bg-orange-50/50 dark:bg-orange-900/10">
-                          <h3 className="font-bold text-orange-900 dark:text-orange-300 flex items-center gap-2">
-                              <Clock size={20} />
-                              مصاريف معلقة (بحاجة لترحيل)
-                          </h3>
-                          <span className="text-sm font-extrabold text-orange-700 dark:text-orange-400">{formatCurrency(dailyReportData.totalPendingExpenses)}</span>
-                      </div>
-                      <div className="flex-1 overflow-x-auto">
-                          <table className="w-full text-sm text-right">
-                              <thead className="bg-gray-50 dark:bg-dark-800 text-gray-500 dark:text-gray-400">
-                                  <tr>
-                                      <th className="px-5 py-3">المشروع / الجهة</th>
-                                      <th className="px-5 py-3">المبلغ المعلق</th>
-                                  </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-                                  {dailyReportData.pendingExpensesList.length > 0 ? dailyReportData.pendingExpensesList.map((item, i) => (
-                                      <tr key={i} className="hover:bg-gray-50 dark:hover:bg-dark-800">
-                                          <td className="px-5 py-3 font-medium text-gray-800 dark:text-white">{item.name}</td>
-                                          <td className="px-5 py-3 font-bold text-orange-600 dark:text-orange-400">{formatCurrency(item.amount)}</td>
-                                      </tr>
-                                  )) : (
-                                      <tr><td colSpan={2} className="text-center py-6 text-gray-400">لا توجد مصاريف معلقة</td></tr>
-                                  )}
-                              </tbody>
-                          </table>
-                      </div>
-                  </div>
-
-                  {/* 5. Employee Custody (Right Column Bottom) */}
-                  <div className="bg-white dark:bg-dark-900 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden flex flex-col">
-                      <div className="p-5 border-b border-gray-100 dark:border-dark-800 flex justify-between items-center bg-purple-50/50 dark:bg-purple-900/10">
-                          <h3 className="font-bold text-purple-900 dark:text-purple-300 flex items-center gap-2">
-                              <Users size={20} />
-                              عهد الكادر الإداري
-                          </h3>
-                          <span className="text-sm font-extrabold text-purple-700 dark:text-purple-400">{formatCurrency(dailyReportData.totalCustody)}</span>
-                      </div>
-                      <div className="flex-1 overflow-x-auto">
-                          <table className="w-full text-sm text-right">
-                              <thead className="bg-gray-50 dark:bg-dark-800 text-gray-500 dark:text-gray-400">
-                                  <tr>
-                                      <th className="px-5 py-3">الموظف</th>
-                                      <th className="px-5 py-3">مبلغ العهدة</th>
-                                  </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-                                  {dailyReportData.employeeCustody.length > 0 ? dailyReportData.employeeCustody.map((e, i) => (
-                                      <tr key={i} className="hover:bg-gray-50 dark:hover:bg-dark-800">
-                                          <td className="px-5 py-3 font-medium text-gray-800 dark:text-white">{e.name}</td>
-                                          <td className="px-5 py-3 font-bold text-purple-600 dark:text-purple-400">{formatCurrency(e.balance)}</td>
-                                      </tr>
-                                  )) : (
-                                      <tr><td colSpan={2} className="text-center py-6 text-gray-400">لا توجد عهد موزعة</td></tr>
-                                  )}
-                              </tbody>
-                          </table>
-                      </div>
-                  </div>
-
               </div>
           </div>
       ) : (
-      
-      // ---------------- EXISTING ANNUAL/MONTHLY VIEW ----------------
+      // ---------------- ANNUAL/MONTHLY VIEW ----------------
       <>
-        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-white dark:bg-dark-900 p-6 rounded-xl border border-gray-100 dark:border-dark-800 shadow-sm">
                 <h4 className="text-gray-500 dark:text-gray-400 text-sm mb-2 font-medium">صافي الربح</h4>
@@ -487,7 +415,6 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
                 </div>
             </div>
             
-            {/* Split Expense Cards */}
             <div className="bg-white dark:bg-dark-900 p-6 rounded-xl border border-gray-100 dark:border-dark-800 shadow-sm">
                 <h4 className="text-gray-500 dark:text-gray-400 text-sm mb-2 font-medium flex items-center gap-1"><HardHat size={14} /> مصاريف المشاريع</h4>
                 <div className="flex items-end gap-3">
@@ -504,7 +431,6 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
             </div>
         </div>
 
-        {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white dark:bg-dark-900 p-6 rounded-xl border border-gray-100 dark:border-dark-800 shadow-sm">
                 <h3 className="font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
@@ -526,7 +452,6 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
                 </div>
             </div>
 
-            {/* Expense Distribution */}
             <div className="bg-white dark:bg-dark-900 p-6 rounded-xl border border-gray-100 dark:border-dark-800 shadow-sm flex flex-col">
             <div className="flex justify-between items-center mb-6">
                 <h3 className="font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -561,47 +486,6 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear }) => {
                     <div className="text-center text-gray-400">لا توجد مصاريف مسجلة في هذه الفترة</div>
                 )}
             </div>
-            </div>
-        </div>
-
-        {/* Project Profitability Table */}
-        <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 dark:border-dark-800">
-            <h3 className="font-bold text-gray-800 dark:text-white">ربحية المشاريع (تراكمي)</h3>
-            <p className="text-xs text-gray-500 mt-1">يتم عرض ربحية المشاريع بشكل تراكمي منذ بدايتها لأن المشاريع قد تمتد لسنوات متعددة.</p>
-            </div>
-            <div className="overflow-x-auto">
-            <table className="w-full text-sm text-right">
-                <thead className="bg-gray-50 dark:bg-dark-800 text-gray-500 dark:text-gray-400">
-                <tr>
-                    <th className="px-6 py-4">المشروع</th>
-                    <th className="px-6 py-4">قيمة العقد</th>
-                    <th className="px-6 py-4">صافي الربح (المحقق)</th>
-                    <th className="px-6 py-4">هامش الربح</th>
-                    <th className="px-6 py-4">الأداء</th>
-                </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-                {projectPerformance.map((project, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-800 dark:text-gray-200">{project.name}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{formatCurrency(project.budget)}</td>
-                    <td className={`px-6 py-4 font-bold ${project.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(project.profit)}
-                    </td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{project.margin.toFixed(1)}%</td>
-                    <td className="px-6 py-4">
-                        <div className="w-24 bg-gray-200 dark:bg-dark-700 rounded-full h-1.5">
-                        <div 
-                            className={`h-1.5 rounded-full ${project.profit > 0 ? 'bg-green-500' : 'bg-red-500'}`} 
-                            style={{ width: `${Math.min(Math.abs(project.margin), 100)}%` }}
-                        ></div>
-                        </div>
-                    </td>
-                    </tr>
-                ))}
-                </tbody>
-            </table>
             </div>
         </div>
       </>

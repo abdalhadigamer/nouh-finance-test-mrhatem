@@ -5,8 +5,7 @@ import {
   TrendingDown, 
   Wallet, 
   AlertCircle,
-  Briefcase,
-  Lock
+  Briefcase
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -18,13 +17,15 @@ import {
   Area,
   TooltipProps
 } from 'recharts';
-import { getRecentInvoices, formatCurrency } from '../services/dataService';
-import { DashboardStats, Invoice } from '../types';
-import { MOCK_TRANSACTIONS } from '../constants';
+import { formatCurrency } from '../services/dataService';
+import { DashboardStats, Invoice, Project, Transaction, TransactionType, ProjectStatus } from '../types';
 
 interface DashboardProps {
   onNavigate: (page: string) => void;
   selectedYear: number;
+  projects: Project[];
+  transactions: Transaction[];
+  invoices: Invoice[];
 }
 
 // Custom Tooltip Component
@@ -48,35 +49,36 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   return null;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, projects, transactions, invoices }) => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([]);
   
-  // Calculate stats based on year
+  // Calculate stats based on year and live data
   useEffect(() => {
     // Filter transactions by year
-    const relevantTransactions = MOCK_TRANSACTIONS.filter(t => t.date.startsWith(selectedYear.toString()));
+    const relevantTransactions = transactions.filter(t => t.date.startsWith(selectedYear.toString()));
     
     // Revenue: Receipts
-    const revenue = relevantTransactions.filter(t => t.type === 'سند قبض').reduce((sum, t) => sum + t.amount, 0);
+    const revenue = relevantTransactions.filter(t => t.type === TransactionType.RECEIPT).reduce((sum, t) => sum + t.amount, 0);
     // Expenses: Payments
-    const expenses = relevantTransactions.filter(t => t.type === 'سند صرف').reduce((sum, t) => sum + t.amount, 0);
+    const expenses = relevantTransactions.filter(t => t.type === TransactionType.PAYMENT).reduce((sum, t) => sum + t.amount, 0);
     
+    // Active Projects Count
+    const activeProjectsCount = projects.filter(p => p.status === ProjectStatus.EXECUTION || p.status === ProjectStatus.DESIGN).length;
+
     // Update Stats
     setStats({
         totalRevenue: revenue,
         totalExpenses: expenses,
         netProfit: revenue - expenses,
-        activeProjects: 8, // Mock count
+        activeProjects: activeProjectsCount,
         cashFlowStatus: (revenue - expenses) > 0 ? 'Positive' : 'Negative'
     });
 
-    getRecentInvoices().then(inv => {
-        // Filter invoices by year
-        setInvoices(inv.filter(i => i.date.startsWith(selectedYear.toString())));
-    });
+    // Filter invoices by year
+    setFilteredInvoices(invoices.filter(i => i.date.startsWith(selectedYear.toString())));
 
-  }, [selectedYear]);
+  }, [selectedYear, projects, transactions, invoices]);
 
   // Generate Chart Data dynamically based on selected year
   const chartData = useMemo(() => {
@@ -87,25 +89,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear }) => {
           const monthIndex = i + 1;
           const monthPrefix = `${selectedYear}-${String(monthIndex).padStart(2, '0')}`;
           
-          // Filter transactions for this specific month
-          const monthTxns = MOCK_TRANSACTIONS.filter(t => t.date.startsWith(monthPrefix));
+          // Filter transactions for this specific month from LIVE data
+          const monthTxns = transactions.filter(t => t.date.startsWith(monthPrefix));
           
           data.push({
               name: months[i],
-              دخل: monthTxns.filter(t => t.type === 'سند قبض').reduce((sum, t) => sum + t.amount, 0),
-              مصروف: monthTxns.filter(t => t.type === 'سند صرف').reduce((sum, t) => sum + t.amount, 0)
+              دخل: monthTxns.filter(t => t.type === TransactionType.RECEIPT).reduce((sum, t) => sum + t.amount, 0),
+              مصروف: monthTxns.filter(t => t.type === TransactionType.PAYMENT).reduce((sum, t) => sum + t.amount, 0)
           });
       }
       return data;
-  }, [selectedYear]);
+  }, [selectedYear, transactions]);
 
-  // Temporary Hack: Check local storage or context for permission
-  // In a real app, pass permission as prop. Here we infer from menu visibility logic roughly
-  // Ideally, DashboardProps should receive permissions. 
-  // Since we updated App.tsx to pass nothing extra to Dashboard except year/navigate, 
-  // let's assume if the user is accountant, they might have restricted view if 'financial_stats' is missing.
-  // Actually, let's just show everything but mask it visually if needed? No, let's keep it simple.
-  
   if (!stats) return <div className="flex justify-center p-10"><span className="loading-spinner text-primary-600">جاري التحميل...</span></div>;
 
   return (
@@ -201,29 +196,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear }) => {
             تنبيهات وإشعارات
           </h3>
           <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 border-r-4 border-red-500 rounded-md">
-              <div className="flex justify-between">
-                <h4 className="font-bold text-red-700 dark:text-red-400 text-sm">فاتورة متأخرة</h4>
-                <span className="text-xs text-red-600 dark:text-red-400">منذ يومين</span>
-              </div>
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">مشروع السليمانية - دفعة المورد (الحديد)</p>
-            </div>
-            
-            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border-r-4 border-yellow-500 rounded-md">
-              <div className="flex justify-between">
-                <h4 className="font-bold text-yellow-700 dark:text-yellow-400 text-sm">ميزانية منخفضة</h4>
-                <span className="text-xs text-yellow-600 dark:text-yellow-400">اليوم</span>
-              </div>
-              <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1">مشروع المجمع السكني يقترب من الحد الأقصى للمصاريف النثرية</p>
-            </div>
-
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-r-4 border-blue-500 rounded-md">
-              <div className="flex justify-between">
-                <h4 className="font-bold text-blue-700 dark:text-blue-400 text-sm">اعتماد مطلوب</h4>
-                <span className="text-xs text-blue-600 dark:text-blue-400">منذ 3 ساعات</span>
-              </div>
-              <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">سند صرف رواتب شهر مايو بانتظار الموافقة</p>
-            </div>
+            {/* Logic to show real alerts based on data can be added here. For now, showing empty state if no mock alerts are relevant to empty data */}
+            {filteredInvoices.filter(i => i.status === 'Overdue').length > 0 ? (
+                 filteredInvoices.filter(i => i.status === 'Overdue').map(inv => (
+                    <div key={inv.id} className="p-4 bg-red-50 dark:bg-red-900/20 border-r-4 border-red-500 rounded-md">
+                        <div className="flex justify-between">
+                            <h4 className="font-bold text-red-700 dark:text-red-400 text-sm">فاتورة متأخرة</h4>
+                            <span className="text-xs text-red-600 dark:text-red-400">{inv.date}</span>
+                        </div>
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">فاتورة رقم {inv.invoiceNumber} - {inv.supplierName}</p>
+                    </div>
+                 ))
+            ) : (
+                <div className="text-center text-gray-400 py-10">
+                    لا توجد تنبيهات نشطة حالياً
+                </div>
+            )}
           </div>
         </div>
       </div>
@@ -251,13 +239,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-              {invoices.map((inv) => (
+              {filteredInvoices.map((inv) => (
                 <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-200">{inv.invoiceNumber}</td>
-                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{inv.projectId}</td>
+                  <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
+                      {projects.find(p => p.id === inv.projectId)?.name || inv.projectId}
+                  </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                      ${inv.type === 'مبيعات' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'}`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300`}>
                       {inv.category}
                     </span>
                   </td>
@@ -271,7 +260,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear }) => {
                   </td>
                 </tr>
               ))}
-              {invoices.length === 0 && (
+              {filteredInvoices.length === 0 && (
                   <tr>
                       <td colSpan={5} className="text-center py-8 text-gray-400 dark:text-gray-500">لا توجد بيانات لهذه السنة</td>
                   </tr>

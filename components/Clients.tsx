@@ -1,18 +1,18 @@
 
 import React, { useState } from 'react';
-import { MOCK_CLIENTS, MOCK_PROJECTS } from '../constants';
-import { Client, AppDocument, User } from '../types';
-import { logActivity } from '../services/auditService';
+import { Client, AppDocument, User, ActivityLog } from '../types';
 import { Search, UserPlus, Phone, Mail, Building, Key, Eye, EyeOff, Edit, Trash2, FolderOpen, Upload, Paperclip, FileText, X } from 'lucide-react';
 import Modal from './Modal';
 
 interface ClientsProps {
+  clients: Client[];
+  onUpdateClients: (clients: Client[]) => void;
   onViewProjects: (client: Client) => void;
   currentUser?: User;
+  onAction?: (action: ActivityLog['action'], entity: ActivityLog['entity'], description: string, entityId?: string) => void;
 }
 
-const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
-  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
+const Clients: React.FC<ClientsProps> = ({ clients, onUpdateClients, onViewProjects, currentUser, onAction }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
 
@@ -33,50 +33,30 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
     setShowPasswordMap(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getClientProjectCount = (username: string) => {
-    return MOCK_PROJECTS.filter(p => p.clientUsername === username).length;
-  };
-
   const handleSaveClient = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // --- COMPREHENSIVE VALIDATION ---
     const errors: string[] = [];
-
-    if (!currentClient.name?.trim()) {
-        errors.push("اسم العميل مطلوب.");
-    }
-    if (!currentClient.username?.trim()) {
-        errors.push("اسم المستخدم مطلوب للدخول للبوابة.");
-    }
-    if (!currentClient.password?.trim()) {
-        errors.push("كلمة المرور مطلوبة.");
-    }
+    if (!currentClient.name?.trim()) errors.push("اسم العميل مطلوب.");
+    if (!currentClient.username?.trim()) errors.push("اسم المستخدم مطلوب للدخول للبوابة.");
+    if (!currentClient.password?.trim()) errors.push("كلمة المرور مطلوبة.");
     
     if (errors.length > 0) {
-        alert("عذراً، لا يمكن حفظ بيانات العميل. يرجى تصحيح الأخطاء التالية:\n\n" + errors.map(e => "• " + e).join("\n"));
+        alert("تنبيه:\n" + errors.map(e => "• " + e).join("\n"));
         return;
     }
-    // --------------------------------
 
     if (isEditMode && currentClient.id) {
-      // Edit
-      setClients(clients.map(c => c.id === currentClient.id ? { ...c, ...currentClient } as Client : c));
-      if (currentUser) {
-          logActivity(currentUser, 'UPDATE', 'Client', `تعديل بيانات العميل: ${currentClient.name}`, currentClient.id);
-      }
+      onUpdateClients(clients.map(c => c.id === currentClient.id ? { ...c, ...currentClient } as Client : c));
+      if (onAction) onAction('UPDATE', 'Client', `تعديل بيانات العميل: ${currentClient.name}`, currentClient.id);
     } else {
-      // Add
       const newClientData: Client = {
         ...currentClient,
         id: `c${Date.now()}`,
         joinDate: new Date().toISOString().split('T')[0],
         avatar: currentClient.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentClient.name}`
       } as Client;
-      setClients([newClientData, ...clients]);
-      if (currentUser) {
-          logActivity(currentUser, 'CREATE', 'Client', `إضافة عميل جديد: ${newClientData.name}`, newClientData.id);
-      }
+      onUpdateClients([newClientData, ...clients]);
+      if (onAction) onAction('CREATE', 'Client', `إضافة عميل جديد: ${newClientData.name}`, newClientData.id);
     }
     
     setIsModalOpen(false);
@@ -86,10 +66,8 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
   const handleDeleteClient = (id: string) => {
     if (confirm('هل أنت متأكد من حذف هذا العميل؟')) {
       const clientName = clients.find(c => c.id === id)?.name;
-      setClients(clients.filter(c => c.id !== id));
-      if (currentUser) {
-          logActivity(currentUser, 'DELETE', 'Client', `حذف العميل: ${clientName || id}`, id);
-      }
+      onUpdateClients(clients.filter(c => c.id !== id));
+      if (onAction) onAction('DELETE', 'Client', `حذف العميل: ${clientName || id}`, id);
     }
   };
 
@@ -164,7 +142,6 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
         </button>
       </div>
 
-      {/* Search Bar */}
       <div className="bg-white dark:bg-dark-900 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800">
         <div className="relative max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -178,14 +155,10 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
         </div>
       </div>
 
-      {/* Clients Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredClients.map((client) => (
           <div key={client.id} className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 hover:shadow-md transition-all group overflow-hidden">
-            <div 
-              className="p-6 cursor-pointer"
-              onClick={() => onViewProjects(client)} // Click card to view projects
-            >
+            <div className="p-6 cursor-pointer" onClick={() => onViewProjects(client)}>
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <img src={client.avatar} alt={client.name} className="w-12 h-12 rounded-full border border-gray-200 dark:border-dark-700 bg-gray-50 dark:bg-dark-800 object-cover" />
@@ -197,10 +170,6 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
                       </p>
                     )}
                   </div>
-                </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs px-2 py-1 rounded-md font-bold flex items-center gap-1">
-                  <FolderOpen size={12} />
-                  {getClientProjectCount(client.username)} مشاريع
                 </div>
               </div>
 
@@ -229,65 +198,27 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
                   <Phone size={14} />
                   <span>{client.phone}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                  <Mail size={14} />
-                  <span className="truncate">{client.email}</span>
-                </div>
-                {client.documents && client.documents.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <Paperclip size={14} />
-                    <span>{client.documents.length} مرفقات</span>
-                  </div>
-                )}
               </div>
             </div>
 
             <div className="bg-gray-50 dark:bg-dark-800 p-3 border-t border-gray-100 dark:border-dark-700 flex justify-between items-center opacity-100 transition-opacity">
-              <button
-                onClick={() => onViewProjects(client)}
-                className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline px-2"
-              >
-                عرض المشاريع
-              </button>
-              
+              <button onClick={() => onViewProjects(client)} className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline px-2">عرض المشاريع</button>
               <div className="flex gap-2">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openEditModal(client); }}
-                  className="p-2 text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
-                  title="تعديل البيانات"
-                >
-                  <Edit size={16} />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }}
-                  className="p-2 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                  title="حذف العميل"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <button onClick={(e) => { e.stopPropagation(); openEditModal(client); }} className="p-2 text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg transition-colors"><Edit size={16} /></button>
+                <button onClick={(e) => { e.stopPropagation(); handleDeleteClient(client.id); }} className="p-2 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition-colors"><Trash2 size={16} /></button>
               </div>
             </div>
           </div>
         ))}
+        {filteredClients.length === 0 && <div className="col-span-full text-center text-gray-400 py-10">لا يوجد عملاء مسجلين</div>}
       </div>
 
-      {/* Add/Edit Modal */}
-      <Modal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        title={isEditMode ? "تعديل بيانات العميل" : "إضافة عميل جديد"}
-      >
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditMode ? "تعديل بيانات العميل" : "إضافة عميل جديد"}>
         <form onSubmit={handleSaveClient} className="space-y-4">
           <div className="flex justify-center mb-6">
              <div className="relative group cursor-pointer">
                 <div className="w-24 h-24 rounded-full border-2 border-gray-200 dark:border-dark-700 overflow-hidden bg-gray-50 dark:bg-dark-800">
-                   {currentClient.avatar ? (
-                     <img src={currentClient.avatar} alt="Avatar" className="w-full h-full object-cover" />
-                   ) : (
-                     <div className="w-full h-full flex items-center justify-center text-gray-300">
-                       <UserPlus size={32} />
-                     </div>
-                   )}
+                   {currentClient.avatar ? <img src={currentClient.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><UserPlus size={32} /></div>}
                 </div>
                 <div className="absolute inset-0 bg-black/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                    <Upload className="text-white" size={24} />
@@ -296,119 +227,42 @@ const Clients: React.FC<ClientsProps> = ({ onViewProjects, currentUser }) => {
              </div>
           </div>
 
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800 flex items-start gap-3 mb-4">
-             <Key className="text-blue-600 dark:text-blue-400 w-5 h-5 mt-1 flex-shrink-0" />
-             <div>
-               <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm">بيانات الدخول</h4>
-               <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
-                 سيتمكن العميل من الدخول للبوابة باستخدام اسم المستخدم وكلمة المرور أدناه لرؤية المشاريع المرتبطة به.
-               </p>
-             </div>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم العميل الكامل</label>
-              <input 
-                required
-                type="text" 
-                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
-                value={currentClient.name}
-                onChange={(e) => setCurrentClient({...currentClient, name: e.target.value})}
-              />
+              <input required type="text" className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white" value={currentClient.name} onChange={(e) => setCurrentClient({...currentClient, name: e.target.value})} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الشركة / الجهة (اختياري)</label>
-              <input 
-                type="text" 
-                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
-                value={currentClient.companyName}
-                onChange={(e) => setCurrentClient({...currentClient, companyName: e.target.value})}
-              />
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الشركة (اختياري)</label>
+              <input type="text" className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white" value={currentClient.companyName} onChange={(e) => setCurrentClient({...currentClient, companyName: e.target.value})} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 dark:bg-dark-800 p-4 rounded-xl border border-gray-200 dark:border-dark-700">
             <div>
               <label className="block text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">اسم المستخدم</label>
-              <input 
-                required
-                type="text" 
-                placeholder="مثال: client_ahmed"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none font-mono text-sm dark:bg-dark-950 dark:text-white"
-                value={currentClient.username}
-                onChange={(e) => setCurrentClient({...currentClient, username: e.target.value})}
-              />
+              <input required type="text" className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none font-mono text-sm dark:bg-dark-950 dark:text-white" value={currentClient.username} onChange={(e) => setCurrentClient({...currentClient, username: e.target.value})} />
             </div>
             <div>
               <label className="block text-sm font-bold text-gray-800 dark:text-gray-200 mb-1">كلمة المرور</label>
-              <input 
-                required
-                type="text" 
-                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none font-mono text-sm dark:bg-dark-950 dark:text-white"
-                value={currentClient.password}
-                onChange={(e) => setCurrentClient({...currentClient, password: e.target.value})}
-              />
+              <input required type="text" className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none font-mono text-sm dark:bg-dark-950 dark:text-white" value={currentClient.password} onChange={(e) => setCurrentClient({...currentClient, password: e.target.value})} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم الهاتف</label>
-              <input 
-                type="text" 
-                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
-                value={currentClient.phone}
-                onChange={(e) => setCurrentClient({...currentClient, phone: e.target.value})}
-              />
+              <input type="text" className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white" value={currentClient.phone} onChange={(e) => setCurrentClient({...currentClient, phone: e.target.value})} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">البريد الإلكتروني</label>
-              <input 
-                type="email" 
-                className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white"
-                value={currentClient.email}
-                onChange={(e) => setCurrentClient({...currentClient, email: e.target.value})}
-              />
+              <input type="email" className="w-full px-4 py-2 border border-gray-300 dark:border-dark-700 rounded-lg focus:ring-2 focus:ring-primary-500 outline-none dark:bg-dark-950 dark:text-white" value={currentClient.email} onChange={(e) => setCurrentClient({...currentClient, email: e.target.value})} />
             </div>
-          </div>
-
-          <div>
-             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">مرفقات (عقود، ملفات)</label>
-             <div className="border border-dashed border-gray-300 dark:border-dark-600 rounded-lg p-3 bg-gray-50 dark:bg-dark-800 flex flex-col items-center justify-center relative cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors">
-                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleDocumentUpload} />
-                <Paperclip size={16} className="text-gray-400 mb-1" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">إضافة ملف جديد</span>
-             </div>
-             {currentClient.documents && currentClient.documents.length > 0 && (
-               <div className="mt-2 space-y-1">
-                 {currentClient.documents.map(doc => (
-                   <div key={doc.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-dark-900 p-1 rounded border border-gray-200 dark:border-dark-700">
-                      <FileText size={12} />
-                      <span className="truncate flex-1">{doc.name}</span>
-                      <X size={12} className="cursor-pointer text-gray-400 hover:text-red-500" onClick={() => {
-                        setCurrentClient({...currentClient, documents: currentClient.documents?.filter(d => d.id !== doc.id)})
-                      }}/>
-                   </div>
-                 ))}
-               </div>
-             )}
           </div>
           
           <div className="pt-4 flex gap-3">
-            <button 
-              type="submit" 
-              className="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 rounded-lg transition-colors"
-            >
-              حفظ البيانات
-            </button>
-            <button 
-              type="button" 
-              onClick={() => setIsModalOpen(false)}
-              className="flex-1 bg-gray-100 dark:bg-dark-800 hover:bg-gray-200 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-300 font-bold py-2.5 rounded-lg transition-colors"
-            >
-              إلغاء
-            </button>
+            <button type="submit" className="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 rounded-lg transition-colors">حفظ البيانات</button>
+            <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 bg-gray-100 dark:bg-dark-800 hover:bg-gray-200 dark:hover:bg-dark-700 text-gray-700 dark:text-gray-300 font-bold py-2.5 rounded-lg transition-colors">إلغاء</button>
           </div>
         </form>
       </Modal>

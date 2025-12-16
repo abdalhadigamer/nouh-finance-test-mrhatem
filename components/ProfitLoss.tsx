@@ -1,7 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { MOCK_TRANSACTIONS, MOCK_PROJECTS } from '../constants';
-import { TransactionType, ProjectType, ProjectStatus } from '../types';
+import { TransactionType, ProjectType, ProjectStatus, Transaction, Project } from '../types';
 import { formatCurrency } from '../services/dataService';
 import { 
   TrendingUp, 
@@ -31,6 +30,8 @@ import {
 
 interface ProfitLossProps {
   selectedYear?: number;
+  transactions: Transaction[];
+  projects: Project[];
 }
 
 // Custom Tooltip for Dark Mode
@@ -54,13 +55,13 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   return null;
 };
 
-const ProfitLoss: React.FC<ProfitLossProps> = ({ selectedYear }) => {
+const ProfitLoss: React.FC<ProfitLossProps> = ({ selectedYear, transactions, projects }) => {
   const currentYear = selectedYear || new Date().getFullYear();
   const [period, setPeriod] = useState<'Annual' | 'Q1' | 'Q2' | 'Q3' | 'Q4'>('Annual');
 
   // 1. Filter Transactions based on Year and Period
   const filteredTransactions = useMemo(() => {
-    return MOCK_TRANSACTIONS.filter(t => {
+    return transactions.filter(t => {
         const tDate = new Date(t.date);
         const matchesYear = tDate.getFullYear() === currentYear;
         
@@ -75,7 +76,7 @@ const ProfitLoss: React.FC<ProfitLossProps> = ({ selectedYear }) => {
         
         return true;
     });
-  }, [currentYear, period]);
+  }, [currentYear, period, transactions]);
 
   // --- LOGIC IMPLEMENTATION ---
 
@@ -133,7 +134,7 @@ const ProfitLoss: React.FC<ProfitLossProps> = ({ selectedYear }) => {
       const relevantProjectIds = Array.from(new Set(filteredTransactions.map(t => t.projectId).filter(id => id && id !== 'General' && id !== 'N/A')));
       
       const processed = relevantProjectIds.map(pid => {
-          const project = MOCK_PROJECTS.find(p => p.id === pid);
+          const project = projects.find(p => p.id === pid);
           if (!project) return null;
 
           const pTxns = filteredTransactions.filter(t => t.projectId === pid);
@@ -153,10 +154,10 @@ const ProfitLoss: React.FC<ProfitLossProps> = ({ selectedYear }) => {
               periodExpense: expense,
               periodProfit: profit
           };
-      }).filter(Boolean) as (typeof MOCK_PROJECTS[0] & { periodRevenue: number, periodExpense: number, periodProfit: number })[];
+      }).filter(Boolean) as (Project & { periodRevenue: number, periodExpense: number, periodProfit: number })[];
 
       return processed;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, projects]);
 
   const designProjects = detailedProjects.filter(p => p.type === ProjectType.DESIGN || p.type === ProjectType.SUPERVISION);
   const executionProjects = detailedProjects.filter(p => p.type !== ProjectType.DESIGN && p.type !== ProjectType.SUPERVISION);
@@ -181,14 +182,14 @@ const ProfitLoss: React.FC<ProfitLossProps> = ({ selectedYear }) => {
 
           const monthIndex = i + 1;
           const monthPrefix = `${currentYear}-${String(monthIndex).padStart(2, '0')}`;
-          const monthTxns = MOCK_TRANSACTIONS.filter(t => t.date.startsWith(monthPrefix));
+          const monthTxns = transactions.filter(t => t.date.startsWith(monthPrefix));
           
           // Projects Logic
           let mProjProfit = 0;
           const mProjects = Array.from(new Set(monthTxns.map(t => t.projectId).filter(id => id && id !== 'General' && id !== 'N/A')));
           
           mProjects.forEach(pid => {
-              const project = MOCK_PROJECTS.find(p => p.id === pid);
+              const project = projects.find(p => p.id === pid);
               const pTxns = monthTxns.filter(t => t.projectId === pid);
               const rev = pTxns.filter(t => t.type === TransactionType.RECEIPT).reduce((s, t) => s + t.amount, 0);
               const exp = pTxns.filter(t => t.type === TransactionType.PAYMENT).reduce((s, t) => s + t.amount, 0);
@@ -212,7 +213,7 @@ const ProfitLoss: React.FC<ProfitLossProps> = ({ selectedYear }) => {
           });
       }
       return data;
-  }, [currentYear, period]);
+  }, [currentYear, period, transactions, projects]);
 
   const COLORS = ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
 
