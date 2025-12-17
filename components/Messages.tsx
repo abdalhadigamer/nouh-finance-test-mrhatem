@@ -1,8 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MOCK_CLIENTS } from '../constants';
 import { Client } from '../types';
 import { Search, Send, MoreVertical, Phone, Video, Paperclip, Check, CheckCheck, Smile } from 'lucide-react';
+
+interface MessagesProps {
+  clients: Client[];
+}
 
 interface Message {
   id: string;
@@ -24,8 +27,8 @@ interface Conversation {
   isOnline?: boolean;
 }
 
-const Messages: React.FC = () => {
-  // Mock Data generation based on existing clients
+const Messages: React.FC<MessagesProps> = ({ clients }) => {
+  // Data generation based on passed clients prop
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
@@ -33,8 +36,8 @@ const Messages: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Generate mock conversations from clients
-    const mocks: Conversation[] = MOCK_CLIENTS.map((client, index) => ({
+    // Generate conversations from the dynamic clients list
+    const convs: Conversation[] = clients.map((client, index) => ({
       id: `conv-${client.id}`,
       clientId: client.id,
       clientName: client.name,
@@ -50,10 +53,13 @@ const Messages: React.FC = () => {
         { id: '4', text: index === 0 ? 'هل يمكن مراجعة المخطط الأخير؟' : 'شكراً لك مهندس فهد', sender: 'client', time: index === 0 ? '10:30 ص' : 'أمس', status: 'read' }
       ]
     }));
-    setConversations(mocks);
-    // Select first one by default
-    if (mocks.length > 0) setSelectedConversationId(mocks[0].id);
-  }, []);
+    setConversations(convs);
+    
+    // Select first one by default if not already selected
+    if (convs.length > 0 && !selectedConversationId) {
+        setSelectedConversationId(convs[0].id);
+    }
+  }, [clients]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -116,7 +122,7 @@ const Messages: React.FC = () => {
         </div>
         
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-           {filteredConversations.map(conv => (
+           {filteredConversations.length > 0 ? filteredConversations.map(conv => (
              <div 
                key={conv.id}
                onClick={() => setSelectedConversationId(conv.id)}
@@ -141,7 +147,11 @@ const Messages: React.FC = () => {
                    </div>
                 </div>
              </div>
-           ))}
+           )) : (
+               <div className="p-10 text-center text-gray-400 text-sm">
+                   لا توجد محادثات. <br/> أضف عملاء جدد للبدء.
+               </div>
+           )}
         </div>
       </div>
 
@@ -226,7 +236,9 @@ const Messages: React.FC = () => {
               <div className="w-24 h-24 bg-gray-50 dark:bg-dark-800 rounded-full flex items-center justify-center mb-4">
                  <Search size={48} />
               </div>
-              <p className="text-lg font-bold text-gray-500 dark:text-gray-400">اختر محادثة للبدء</p>
+              <p className="text-lg font-bold text-gray-500 dark:text-gray-400">
+                  {clients.length > 0 ? 'اختر محادثة للبدء' : 'لا يوجد عملاء. أضف عميلاً لبدء المحادثة'}
+              </p>
            </div>
          )}
       </div>

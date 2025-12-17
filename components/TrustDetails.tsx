@@ -1,21 +1,20 @@
 
 import React, { useState } from 'react';
 import { Trustee, TrustTransaction } from '../types';
-import { MOCK_TRUST_TRANSACTIONS } from '../constants';
 import { formatCurrency } from '../services/dataService';
-import { ArrowRight, PlusCircle, MinusCircle, Wallet, Calendar, History, ArrowDownLeft, ArrowUpRight, AlertTriangle } from 'lucide-react';
+import { ArrowRight, PlusCircle, MinusCircle, Wallet, History, ArrowDownLeft, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import Modal from './Modal';
 
 interface TrustDetailsProps {
   trustee: Trustee;
   onBack: () => void;
+  trustTransactions: TrustTransaction[];
+  onUpdateTrustTransactions: (txns: TrustTransaction[]) => void;
 }
 
-const TrustDetails: React.FC<TrustDetailsProps> = ({ trustee, onBack }) => {
-  // Local state for transactions to allow adding new ones
-  const [transactions, setTransactions] = useState<TrustTransaction[]>(
-      MOCK_TRUST_TRANSACTIONS.filter(t => t.trusteeId === trustee.id)
-  );
+const TrustDetails: React.FC<TrustDetailsProps> = ({ trustee, onBack, trustTransactions, onUpdateTrustTransactions }) => {
+  // Filter transactions for this trustee from props
+  const myTransactions = trustTransactions.filter(t => t.trusteeId === trustee.id);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,8 +24,8 @@ const TrustDetails: React.FC<TrustDetailsProps> = ({ trustee, onBack }) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Calculations
-  const totalDeposits = transactions.filter(t => t.type === 'Deposit').reduce((acc, t) => acc + t.amount, 0);
-  const totalWithdrawals = transactions.filter(t => t.type === 'Withdrawal').reduce((acc, t) => acc + t.amount, 0);
+  const totalDeposits = myTransactions.filter(t => t.type === 'Deposit').reduce((acc, t) => acc + t.amount, 0);
+  const totalWithdrawals = myTransactions.filter(t => t.type === 'Withdrawal').reduce((acc, t) => acc + t.amount, 0);
   const balance = totalDeposits - totalWithdrawals;
   const isDeficit = balance < 0;
 
@@ -43,9 +42,7 @@ const TrustDetails: React.FC<TrustDetailsProps> = ({ trustee, onBack }) => {
           notes: notes
       };
 
-      setTransactions([newTxn, ...transactions]);
-      // Also update mock data in a real app
-      MOCK_TRUST_TRANSACTIONS.unshift(newTxn);
+      onUpdateTrustTransactions([newTxn, ...trustTransactions]);
       
       setIsModalOpen(false);
       setAmount(0);
@@ -132,7 +129,7 @@ const TrustDetails: React.FC<TrustDetailsProps> = ({ trustee, onBack }) => {
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-                      {transactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(txn => (
+                      {myTransactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(txn => (
                           <tr key={txn.id} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
                               <td className="px-6 py-4 font-mono text-gray-600 dark:text-gray-400">{txn.date}</td>
                               <td className="px-6 py-4">
@@ -147,7 +144,7 @@ const TrustDetails: React.FC<TrustDetailsProps> = ({ trustee, onBack }) => {
                               </td>
                           </tr>
                       ))}
-                      {transactions.length === 0 && (
+                      {myTransactions.length === 0 && (
                           <tr>
                               <td colSpan={4} className="text-center py-12 text-gray-400">لا توجد حركات مسجلة لهذا الشخص</td>
                           </tr>

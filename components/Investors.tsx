@@ -1,18 +1,24 @@
 
 import React, { useState } from 'react';
-import { MOCK_INVESTORS, MOCK_INVESTOR_TRANSACTIONS, MOCK_PROJECTS } from '../constants';
-import { Investor, ProjectType, ProjectStatus } from '../types';
+import { Investor, ProjectType, ProjectStatus, InvestorTransaction, Project } from '../types';
 import { Search, UserPlus, Phone, Briefcase, TrendingUp, ChevronLeft, Key, Eye, EyeOff, Coins, HardHat } from 'lucide-react';
 import { formatCurrency } from '../services/dataService';
 import Modal from './Modal';
 import InvestorDetails from './InvestorDetails';
 
-const Investors: React.FC = () => {
-  const [investors, setInvestors] = useState<Investor[]>(MOCK_INVESTORS);
+interface InvestorsProps {
+    investors: Investor[];
+    onUpdateInvestors: (investors: Investor[]) => void;
+    investorTransactions: InvestorTransaction[];
+    onUpdateInvestorTransactions: (txns: InvestorTransaction[]) => void;
+    projects: Project[];
+}
+
+const Investors: React.FC<InvestorsProps> = ({ investors, onUpdateInvestors, investorTransactions, onUpdateInvestorTransactions, projects }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInvestor, setSelectedInvestor] = useState<Investor | null>(null);
   
-  // NEW: Active Tab State
+  // Active Tab State
   const [activeTab, setActiveTab] = useState<'Capital' | 'Partner'>('Capital');
 
   // Visibility for credentials
@@ -31,9 +37,9 @@ const Investors: React.FC = () => {
     linkedProjectIds: []
   });
 
-  // Calculate stats for an investor
+  // Calculate stats for an investor using dynamic props
   const getInvestorStats = (investorId: string) => {
-      const txns = MOCK_INVESTOR_TRANSACTIONS.filter(t => t.investorId === investorId);
+      const txns = investorTransactions.filter(t => t.investorId === investorId);
       const capital = txns.filter(t => t.type === 'Capital_Injection').reduce((sum, t) => sum + t.amount, 0);
       const profit = txns.filter(t => t.type === 'Profit_Distribution').reduce((sum, t) => sum + t.amount, 0);
       const withdrawn = txns.filter(t => t.type === 'Withdrawal').reduce((sum, t) => sum + t.amount, 0);
@@ -59,13 +65,13 @@ const Investors: React.FC = () => {
         linkedProjectIds: newInvestor.linkedProjectIds
     };
 
-    setInvestors([...investors, investor]);
+    onUpdateInvestors([...investors, investor]);
     setIsModalOpen(false);
     setNewInvestor({ name: '', type: 'Capital', agreementDetails: '', phone: '', username: '', password: '', profitPercentage: 0, linkedProjectIds: [] });
   };
 
   const updateInvestor = (updatedInvestor: Investor) => {
-      setInvestors(investors.map(inv => inv.id === updatedInvestor.id ? updatedInvestor : inv));
+      onUpdateInvestors(investors.map(inv => inv.id === updatedInvestor.id ? updatedInvestor : inv));
       setSelectedInvestor(updatedInvestor); // Update current view
   };
 
@@ -74,7 +80,6 @@ const Investors: React.FC = () => {
       setShowPasswordMap(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Filter Logic: Search AND Tab
   const filteredInvestors = investors.filter(inv => {
     const matchesSearch = inv.name.toLowerCase().includes(searchTerm.toLowerCase()) || inv.phone.includes(searchTerm);
     const matchesTab = inv.type === activeTab;
@@ -82,7 +87,7 @@ const Investors: React.FC = () => {
   });
 
   // Get Execution Projects for Partner Selection
-  const executionProjects = MOCK_PROJECTS.filter(p => p.type === ProjectType.EXECUTION || p.status === ProjectStatus.EXECUTION);
+  const executionProjects = projects.filter(p => p.type === ProjectType.EXECUTION || p.status === ProjectStatus.EXECUTION);
 
   const toggleProjectLink = (projectId: string) => {
       const currentIds = newInvestor.linkedProjectIds || [];
@@ -95,11 +100,21 @@ const Investors: React.FC = () => {
 
   // If an investor is selected, show details view
   if (selectedInvestor) {
-      return <InvestorDetails investor={selectedInvestor} onBack={() => setSelectedInvestor(null)} onUpdateInvestor={updateInvestor} />;
+      return (
+        <InvestorDetails 
+            investor={selectedInvestor} 
+            onBack={() => setSelectedInvestor(null)} 
+            onUpdateInvestor={updateInvestor}
+            investorTransactions={investorTransactions}
+            onUpdateInvestorTransactions={onUpdateInvestorTransactions}
+            projects={projects}
+        />
+      );
   }
 
   return (
     <div className="space-y-6">
+      {/* ... (Previous JSX for Header and Tabs remains similar, just ensuring no syntax errors) ... */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -110,7 +125,7 @@ const Investors: React.FC = () => {
         </div>
         <button 
           onClick={() => {
-              setNewInvestor({ ...newInvestor, type: activeTab }); // Pre-select type based on active tab
+              setNewInvestor({ ...newInvestor, type: activeTab }); 
               setIsModalOpen(true);
           }}
           className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 transition-colors shadow-sm font-bold"
@@ -120,7 +135,6 @@ const Investors: React.FC = () => {
         </button>
       </div>
 
-      {/* TABS */}
       <div className="bg-white dark:bg-dark-900 p-1.5 rounded-2xl border border-gray-100 dark:border-dark-800 flex overflow-x-auto gap-2">
          <button 
             onClick={() => setActiveTab('Capital')}
@@ -138,7 +152,6 @@ const Investors: React.FC = () => {
          </button>
       </div>
 
-      {/* Search Bar */}
       <div className="bg-white dark:bg-dark-900 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800">
         <div className="relative max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -152,7 +165,6 @@ const Investors: React.FC = () => {
         </div>
       </div>
 
-      {/* Investors Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredInvestors.map((investor) => {
             const stats = getInvestorStats(investor.id);
@@ -177,7 +189,6 @@ const Investors: React.FC = () => {
 
                   <div className="space-y-3 pt-2 border-t border-gray-50 dark:border-dark-800">
                     
-                    {/* Specific Details based on Type */}
                     {investor.type === 'Capital' ? (
                         <div className="flex justify-between items-center bg-purple-50 dark:bg-purple-900/10 p-2 rounded">
                             <span className="text-xs text-purple-800 dark:text-purple-300 font-bold">نسبة الربح (السنوية/للمشروع):</span>
@@ -194,7 +205,6 @@ const Investors: React.FC = () => {
                         {investor.agreementDetails}
                     </p>
                     
-                    {/* Stats Summary */}
                     <div className="grid grid-cols-2 gap-2 mt-2">
                         <div className="bg-gray-50 dark:bg-dark-800 p-2 rounded text-center">
                             <span className="block text-[10px] text-gray-500 dark:text-gray-400">رأس المال</span>
@@ -211,7 +221,6 @@ const Investors: React.FC = () => {
                       <span dir="ltr">{investor.phone}</span>
                     </div>
                     
-                    {/* Credentials Display */}
                     {(investor.username || investor.password) && (
                         <div className="bg-purple-50/50 dark:bg-purple-900/10 p-2 rounded-lg text-xs mt-2" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-between mb-1">
@@ -249,7 +258,6 @@ const Investors: React.FC = () => {
         )}
       </div>
 
-      {/* Add Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="إضافة مستثمر / شريك">
         <form onSubmit={handleAddInvestor} className="space-y-4">
           <div>
@@ -286,7 +294,6 @@ const Investors: React.FC = () => {
               </div>
           </div>
 
-          {/* Conditional Fields based on Type */}
           {newInvestor.type === 'Capital' ? (
               <div className="bg-purple-50 dark:bg-purple-900/10 p-3 rounded-lg border border-purple-100 dark:border-purple-800">
                   <label className="block text-sm font-medium text-purple-800 dark:text-purple-300 mb-1">نسبة الربح من الشركة (%)</label>

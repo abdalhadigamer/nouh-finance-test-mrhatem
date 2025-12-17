@@ -30,8 +30,8 @@ import {
   BarChart4,
   Activity // Added Activity Icon
 } from 'lucide-react';
-import { User, UserRole, RolePermissions } from '../types';
-import { MOCK_NOTIFICATIONS, MOCK_PROJECTS, MOCK_CLIENTS, MOCK_EMPLOYEES, MOCK_INVOICES } from '../constants';
+import { User, UserRole, RolePermissions, Project, Client, Employee, Invoice } from '../types';
+import { MOCK_NOTIFICATIONS } from '../constants';
 import { formatCurrency } from '../services/dataService';
 
 export interface SearchResultItem {
@@ -52,9 +52,16 @@ interface LayoutProps {
   selectedYear: number;
   onYearChange: (year: number) => void;
   permissions: RolePermissions[];
+  // Data for search
+  searchData?: {
+      projects: Project[];
+      clients: Client[];
+      employees: Employee[];
+      invoices: Invoice[];
+  };
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate, onSearchSelect, selectedYear, onYearChange, permissions }) => {
+const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate, onSearchSelect, selectedYear, onYearChange, permissions, searchData }) => {
   // Mobile sidebar state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   // Desktop sidebar state
@@ -109,9 +116,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
     };
   }, []);
 
-  // Search Logic
+  // Search Logic - Updated to use searchData prop
   useEffect(() => {
-    if (searchQuery.trim().length < 1) {
+    if (searchQuery.trim().length < 1 || !searchData) {
       setSearchResults([]);
       return;
     }
@@ -120,35 +127,35 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
     const results: SearchResultItem[] = [];
 
     // Projects
-    MOCK_PROJECTS.forEach(p => {
+    searchData.projects.forEach(p => {
       if (p.name.toLowerCase().includes(query) || p.clientName.toLowerCase().includes(query) || p.location.toLowerCase().includes(query)) {
         results.push({ id: p.id, type: 'project', title: p.name, subtitle: `مشروع - ${p.clientName}`, data: p });
       }
     });
 
     // Clients
-    MOCK_CLIENTS.forEach(c => {
+    searchData.clients.forEach(c => {
       if (c.name.toLowerCase().includes(query) || c.companyName?.toLowerCase().includes(query)) {
         results.push({ id: c.id, type: 'client', title: c.name, subtitle: c.companyName || 'عميل', data: c });
       }
     });
 
     // Employees
-    MOCK_EMPLOYEES.forEach(e => {
+    searchData.employees.forEach(e => {
       if (e.name.toLowerCase().includes(query) || e.role.toLowerCase().includes(query)) {
         results.push({ id: e.id, type: 'employee', title: e.name, subtitle: e.role, data: e });
       }
     });
     
     // Invoices
-    MOCK_INVOICES.forEach(inv => {
+    searchData.invoices.forEach(inv => {
        if (inv.invoiceNumber.toLowerCase().includes(query) || inv.supplierName.toLowerCase().includes(query) || inv.supplierOrClient?.toLowerCase().includes(query)) {
            results.push({ id: inv.id, type: 'invoice', title: inv.invoiceNumber, subtitle: `${inv.type} - ${formatCurrency(inv.amount)}`, data: inv });
        }
     });
 
     setSearchResults(results.slice(0, 8)); // Limit results
-  }, [searchQuery]);
+  }, [searchQuery, searchData]);
 
   const handleSearchSelect = (item: SearchResultItem) => {
       if (onSearchSelect) {
@@ -170,21 +177,21 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
 
   const menuItems = [
     { id: 'dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
-    { id: 'projects', label: 'إدارة المشاريع', icon: Briefcase },
-    { id: 'clients', label: 'العملاء', icon: UserCircle }, 
-    { id: 'company_expenses', label: 'مصاريف الشركة', icon: Building2 },
-    { id: 'profit_loss', label: 'الأرباح والخسائر', icon: BarChart4 }, 
-    { id: 'investors', label: 'المستثمرين والشركاء', icon: TrendingUp },
-    { id: 'trusts', label: 'الأمانات والودائع', icon: Shield },
-    { id: 'messages', label: 'الرسائل والمحادثات', icon: MessageSquare },
-    { id: 'invoices', label: 'الفواتير', icon: FileText },
     { id: 'transactions', label: 'الحركات المالية $', icon: ArrowRightLeft },
     { id: 'transactions_syp', label: 'الحركات المالية ل.س', icon: Coins },
-    { id: 'reports', label: 'التقارير المالية', icon: PieChart },
+    { id: 'invoices', label: 'الفواتير', icon: FileText },
+    { id: 'company_expenses', label: 'مصاريف الشركة', icon: Building2 },
     { id: 'hr', label: 'الموارد البشرية', icon: Users },
+    { id: 'projects', label: 'إدارة المشاريع', icon: Briefcase },
+    { id: 'clients', label: 'العملاء', icon: UserCircle }, 
+    { id: 'trusts', label: 'الأمانات والودائع', icon: Shield },
+    { id: 'investors', label: 'المستثمرين والشركاء', icon: TrendingUp },
+    { id: 'reports', label: 'التقارير المالية', icon: PieChart },
     { id: 'manager_reports', label: 'التقارير والدوام', icon: ClipboardList },
+    { id: 'profit_loss', label: 'الأرباح والخسائر', icon: BarChart4 }, 
+    { id: 'messages', label: 'الرسائل والمحادثات', icon: MessageSquare },
     { id: 'files', label: 'الأرشيف الإلكتروني', icon: Files },
-    { id: 'activity_log', label: 'سجل العمليات', icon: Activity }, // NEW ITEM
+    { id: 'activity_log', label: 'سجل العمليات', icon: Activity },
     { id: 'settings', label: 'الإعدادات', icon: SettingsIcon },
   ];
 

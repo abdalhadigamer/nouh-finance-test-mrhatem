@@ -1,18 +1,21 @@
 
 import React, { useState } from 'react';
-import { MOCK_TRUSTEES, MOCK_TRUST_TRANSACTIONS } from '../constants';
-import { Trustee } from '../types';
-import { Search, UserPlus, Phone, User, Shield, Briefcase, ChevronLeft, ArrowRight, Key, Eye, EyeOff } from 'lucide-react';
+import { Trustee, TrustTransaction } from '../types';
+import { Search, UserPlus, Phone, Shield, ChevronLeft, Key, Eye, EyeOff } from 'lucide-react';
 import { formatCurrency } from '../services/dataService';
 import Modal from './Modal';
 import TrustDetails from './TrustDetails';
 
-const Trusts: React.FC = () => {
-  const [trustees, setTrustees] = useState<Trustee[]>(MOCK_TRUSTEES);
+interface TrustsProps {
+    trustees: Trustee[];
+    onUpdateTrustees: (trustees: Trustee[]) => void;
+    trustTransactions: TrustTransaction[];
+    onUpdateTrustTransactions: (txns: TrustTransaction[]) => void;
+}
+
+const Trusts: React.FC<TrustsProps> = ({ trustees, onUpdateTrustees, trustTransactions, onUpdateTrustTransactions }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTrustee, setSelectedTrustee] = useState<Trustee | null>(null);
-  
-  // Visibility for credentials
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
 
   // Modal State
@@ -25,9 +28,9 @@ const Trusts: React.FC = () => {
     password: ''
   });
 
-  // Calculate balance for a trustee dynamically
+  // Calculate balance for a trustee dynamically from props
   const calculateBalance = (trusteeId: string) => {
-      const txns = MOCK_TRUST_TRANSACTIONS.filter(t => t.trusteeId === trusteeId);
+      const txns = trustTransactions.filter(t => t.trusteeId === trusteeId);
       const deposits = txns.filter(t => t.type === 'Deposit').reduce((sum, t) => sum + t.amount, 0);
       const withdrawals = txns.filter(t => t.type === 'Withdrawal').reduce((sum, t) => sum + t.amount, 0);
       return deposits - withdrawals;
@@ -47,7 +50,7 @@ const Trusts: React.FC = () => {
         password: newTrustee.password
     };
 
-    setTrustees([...trustees, trustee]);
+    onUpdateTrustees([...trustees, trustee]);
     setIsModalOpen(false);
     setNewTrustee({ name: '', phone: '', relation: '', username: '', password: '' });
   };
@@ -64,7 +67,14 @@ const Trusts: React.FC = () => {
 
   // If a trustee is selected, show details view
   if (selectedTrustee) {
-      return <TrustDetails trustee={selectedTrustee} onBack={() => setSelectedTrustee(null)} />;
+      return (
+        <TrustDetails 
+            trustee={selectedTrustee} 
+            onBack={() => setSelectedTrustee(null)} 
+            trustTransactions={trustTransactions}
+            onUpdateTrustTransactions={onUpdateTrustTransactions}
+        />
+      );
   }
 
   return (

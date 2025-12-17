@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { formatCurrency } from '../services/dataService';
-import { Transaction, TransactionType, Invoice, InvoiceType, User, Project, Employee, Client, ProjectStatus, EmployeeType, ActivityLog, Investor, Trustee } from '../types';
+import { Transaction, TransactionType, Invoice, InvoiceType, User, Project, Employee, Client, ProjectStatus, EmployeeType, ActivityLog, Investor, Trustee, InvestorTransaction, TrustTransaction } from '../types';
 import { PlusCircle, ArrowUpRight, ArrowDownLeft, RefreshCcw, Check, Search, TrendingDown, TrendingUp, CheckCircle, Clock, Briefcase, X, Plus, User as UserIcon, Shield, Wallet, HardHat, CheckSquare, FileText, Building2, Coins, CalendarDays, ArrowRight } from 'lucide-react';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
@@ -19,6 +19,13 @@ interface TransactionsProps {
     // Props for Auto-Invoice Feature
     invoices?: Invoice[];
     onUpdateInvoices?: (invoices: Invoice[]) => void;
+    
+    // Props for Ledger Sync
+    investorTransactions?: InvestorTransaction[];
+    onUpdateInvestorTransactions?: (txns: InvestorTransaction[]) => void;
+    trustTransactions?: TrustTransaction[];
+    onUpdateTrustTransactions?: (txns: TrustTransaction[]) => void;
+
     onAction?: (action: ActivityLog['action'], entity: ActivityLog['entity'], description: string, entityId?: string) => void;
 }
 
@@ -40,6 +47,10 @@ const Transactions: React.FC<TransactionsProps> = ({
     currentUser,
     invoices = [],
     onUpdateInvoices,
+    investorTransactions = [],
+    onUpdateInvestorTransactions,
+    trustTransactions = [],
+    onUpdateTrustTransactions,
     onAction
 }) => {
   const [activeTab, setActiveTab] = useState<'expenses' | 'revenues' | 'transfers' | 'pending'>('expenses');
@@ -98,6 +109,12 @@ const Transactions: React.FC<TransactionsProps> = ({
           if (expenseContext === 'investor' && !newTxn.recipientId) errors.push("يرجى اختيار المستثمر.");
           if (expenseContext === 'trust' && !newTxn.recipientId) errors.push("يرجى اختيار صاحب الأمانة.");
       }
+      
+      if (newTxn.type === TransactionType.RECEIPT) {
+          if (receiptSourceType === 'client' && !newTxn.projectId) errors.push("يرجى اختيار المشروع.");
+          if (receiptSourceType === 'investor' && !newTxn.recipientId) errors.push("يرجى اختيار المستثمر.");
+          if (receiptSourceType === 'trustee' && !newTxn.recipientId) errors.push("يرجى اختيار صاحب الأمانة.");
+      }
 
       return errors;
   };
@@ -121,10 +138,63 @@ const Transactions: React.FC<TransactionsProps> = ({
     // By default, actual payment date is same as record date unless pending
     let finalActualDate = newTxn.date || new Date().toISOString().split('T')[0]; 
 
+    let finalSerial = newTxn.serialNumber;
+    if (!isEditMode && !finalSerial) {
+        let baseSerial = newTxn.type === TransactionType.RECEIPT ? 1000 : 5000;
+        const existingSerials = transactions.filter(t => t.type === newTxn.type).map(t => t.serialNumber || 0);
+        finalSerial = (existingSerials.length > 0 ? Math.max(...existingSerials) : baseSerial) + 1;
+    }
+
     // 1. Handle Receipts (Income)
     if (newTxn.type === TransactionType.RECEIPT) {
-        finalFromAccount = newTxn.fromAccount || 'جهة خارجية';
         finalRecipientName = 'الخزينة الرئيسية'; 
+        
+        if (receiptSourceType === 'client') {
+            const project = projects.find(p => p.id === newTxn.projectId);
+            finalFromAccount = project ? `${project.clientName} - ${project.name}` : 'عميل';
+            finalRecipientType = 'Client';
+        } else if (receiptSourceType === 'investor') {
+            const investor = investors.find(i => i.id === newTxn.recipientId);
+            finalFromAccount = investor ? `مستثمر: ${investor.name}` : 'مستثمر';
+            finalRecipientType = 'Investor';
+            finalProjectId = 'N/A';
+            
+            // SYNC LEDGER: Capital Injection - ONLY ON CREATE
+            if (onUpdateInvestorTransactions && !isEditMode) {
+                const invTxn: InvestorTransaction = {
+                    id: `it-auto-${Date.now()}`,
+                    investorId: newTxn.recipientId!,
+                    type: 'Capital_Injection',
+                    amount: newTxn.amount || 0,
+                    date: newTxn.date || '',
+                    notes: `إيداع نقدي (سند قبض #${finalSerial}) - ${newTxn.description}`
+                };
+                onUpdateInvestorTransactions([invTxn, ...investorTransactions]);
+            }
+
+        } else if (receiptSourceType === 'trustee') {
+            const trustee = trustees.find(t => t.id === newTxn.recipientId);
+            finalFromAccount = trustee ? `أمانة: ${trustee.name}` : 'أمانة';
+            finalRecipientType = 'Trustee';
+            finalProjectId = 'N/A';
+
+            // SYNC LEDGER: Deposit - ONLY ON CREATE
+            if (onUpdateTrustTransactions && !isEditMode) {
+                const trTxn: TrustTransaction = {
+                    id: `tt-auto-${Date.now()}`,
+                    trusteeId: newTxn.recipientId!,
+                    type: 'Deposit',
+                    amount: newTxn.amount || 0,
+                    date: newTxn.date || '',
+                    notes: `إيداع نقدي (سند قبض #${finalSerial}) - ${newTxn.description}`
+                };
+                onUpdateTrustTransactions([trTxn, ...trustTransactions]);
+            }
+
+        } else {
+            finalFromAccount = newTxn.fromAccount || 'جهة خارجية';
+            finalRecipientType = 'Other';
+        }
     } 
     // 2. Handle Payments (Expenses) - NEW LOGIC
     else if (newTxn.type === TransactionType.PAYMENT) {
@@ -163,12 +233,38 @@ const Transactions: React.FC<TransactionsProps> = ({
             finalRecipientType = 'Investor';
             finalStatus = 'Completed';
 
+            // SYNC LEDGER: Withdrawal - ONLY ON CREATE
+            if (onUpdateInvestorTransactions && !isEditMode) {
+                const invTxn: InvestorTransaction = {
+                    id: `it-auto-${Date.now()}`,
+                    investorId: newTxn.recipientId!,
+                    type: 'Withdrawal',
+                    amount: newTxn.amount || 0,
+                    date: newTxn.date || '',
+                    notes: `سحب نقدي (سند صرف #${finalSerial}) - ${newTxn.description}`
+                };
+                onUpdateInvestorTransactions([invTxn, ...investorTransactions]);
+            }
+
         } else if (expenseContext === 'trust') {
             finalProjectId = 'N/A';
             const trustee = trustees.find(t => t.id === newTxn.recipientId);
             finalRecipientName = trustee ? `أمانات: ${trustee.name}` : 'حساب أمانات';
             finalRecipientType = 'Trustee';
             finalStatus = 'Completed';
+
+            // SYNC LEDGER: Withdrawal - ONLY ON CREATE
+            if (onUpdateTrustTransactions && !isEditMode) {
+                const trTxn: TrustTransaction = {
+                    id: `tt-auto-${Date.now()}`,
+                    trusteeId: newTxn.recipientId!,
+                    type: 'Withdrawal',
+                    amount: newTxn.amount || 0,
+                    date: newTxn.date || '',
+                    notes: `إرجاع مبلغ (سند صرف #${finalSerial}) - ${newTxn.description}`
+                };
+                onUpdateTrustTransactions([trTxn, ...trustTransactions]);
+            }
 
         } else { // Company/General
             finalProjectId = 'General';
@@ -181,13 +277,6 @@ const Transactions: React.FC<TransactionsProps> = ({
     let finalDescription = newTxn.description || '';
     if (isAddingNewItem) {
         finalDescription = `${finalDescription} - (بند: ${newItemName})`;
-    }
-
-    let finalSerial = newTxn.serialNumber;
-    if (!isEditMode && !finalSerial) {
-        let baseSerial = newTxn.type === TransactionType.RECEIPT ? 1000 : 5000;
-        const existingSerials = transactions.filter(t => t.type === newTxn.type).map(t => t.serialNumber || 0);
-        finalSerial = (existingSerials.length > 0 ? Math.max(...existingSerials) : baseSerial) + 1;
     }
 
     // --- AUTO INVOICE LOGIC ---
@@ -338,6 +427,7 @@ const Transactions: React.FC<TransactionsProps> = ({
         </div>
       </div>
 
+      {/* Tabs and layout omitted for brevity, using same as before... */}
       <div className="bg-white dark:bg-dark-900 p-1.5 rounded-2xl border border-gray-100 dark:border-dark-800 flex overflow-x-auto">
          <button onClick={() => setActiveTab('expenses')} className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'expenses' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}><TrendingDown size={18} /> المصاريف</button>
          <button onClick={() => setActiveTab('revenues')} className={`flex-1 min-w-[120px] py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'revenues' ? 'bg-green-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-dark-800'}`}><TrendingUp size={18} /> الإيرادات</button>
@@ -637,17 +727,44 @@ const Transactions: React.FC<TransactionsProps> = ({
              </div>
           )}
 
-          {/* RECEIPT FORM LOGIC (Preserved) */}
+          {/* RECEIPT FORM LOGIC (Updated) */}
           {newTxn.type === TransactionType.RECEIPT && (
              <div className="space-y-3">
                  <div className="flex gap-2 overflow-x-auto pb-2">
-                     {[{id: 'client', label: 'عميل', icon: UserIcon}, {id: 'other', label: 'عام', icon: Plus}].map((type: any) => (
-                         <button type="button" key={type.id} onClick={() => setReceiptSourceType(type.id)} className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg flex flex-col items-center gap-1 transition-all ${receiptSourceType === type.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
+                     {[
+                         {id: 'client', label: 'دفعة عميل', icon: UserIcon}, 
+                         {id: 'investor', label: 'رأس مال (مستثمر)', icon: TrendingUp}, 
+                         {id: 'trustee', label: 'إيداع أمانة', icon: Shield}, 
+                         {id: 'other', label: 'إيراد عام', icon: Plus}
+                     ].map((type: any) => (
+                         <button type="button" key={type.id} onClick={() => setReceiptSourceType(type.id)} className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg flex flex-col items-center gap-1 transition-all whitespace-nowrap ${receiptSourceType === type.id ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'}`}>
                              <type.icon size={16} /> {type.label}
                          </button>
                      ))}
                  </div>
+                 
                  {receiptSourceType === 'client' && <SearchableSelect label="المشروع" options={activeProjects.map(p => ({ value: p.id, label: p.name }))} value={newTxn.projectId || ''} onChange={(val) => setNewTxn({...newTxn, projectId: val})} />}
+                 
+                 {receiptSourceType === 'investor' && (
+                     <SearchableSelect 
+                        label="المستثمر (المصدر)" 
+                        options={investors.map(i => ({ value: i.id, label: i.name }))} 
+                        value={newTxn.recipientId || ''} 
+                        onChange={(val) => setNewTxn({...newTxn, recipientId: val})} 
+                        required
+                     />
+                 )}
+
+                 {receiptSourceType === 'trustee' && (
+                     <SearchableSelect 
+                        label="صاحب الأمانة (المودع)" 
+                        options={trustees.map(t => ({ value: t.id, label: t.name }))} 
+                        value={newTxn.recipientId || ''} 
+                        onChange={(val) => setNewTxn({...newTxn, recipientId: val})} 
+                        required
+                     />
+                 )}
+
                  {receiptSourceType === 'other' && <input type="text" placeholder="اسم الجهة" className="w-full px-4 py-2 border rounded-lg" value={newTxn.fromAccount} onChange={(e) => setNewTxn({...newTxn, fromAccount: e.target.value})} />}
              </div>
           )}

@@ -25,7 +25,7 @@ import TrusteePortal from './components/TrusteePortal';
 import InvestorPortal from './components/InvestorPortal'; 
 import ProfitLoss from './components/ProfitLoss'; 
 import ActivityLogs from './components/ActivityLogs'; 
-import AIAssistant from './components/AIAssistant'; // IMPORT AI COMPONENT
+import AIAssistant from './components/AIAssistant'; 
 import { MOCK_USERS, LOGO_URL, DEFAULT_PERMISSIONS, MOCK_ACTIVITY_LOGS } from './constants';
 import { User, UserRole, Client, Employee, Project, Trustee, Investor, RolePermissions, SystemModule, Invoice, Transaction, TransactionType, ActivityLog, TrustTransaction, InvestorTransaction } from './types';
 
@@ -110,10 +110,11 @@ const App: React.FC = () => {
   const [invoices, setInvoices] = usePersistentState<Invoice[]>('invoices', []);
   const [transactions, setTransactions] = usePersistentState<Transaction[]>('transactions', []);
   
-  // Additional States for Reports
+  // Additional States for Reports & Sub-ledgers
   const [trustees, setTrustees] = usePersistentState<Trustee[]>('trustees', []);
   const [trustTransactions, setTrustTransactions] = usePersistentState<TrustTransaction[]>('trustTransactions', []);
   const [investors, setInvestors] = usePersistentState<Investor[]>('investors', []);
+  const [investorTransactions, setInvestorTransactions] = usePersistentState<InvestorTransaction[]>('investorTransactions', []);
   const [activityLogs, setActivityLogs] = usePersistentState<ActivityLog[]>('activityLogs', MOCK_ACTIVITY_LOGS);
 
   // Auxiliary States
@@ -288,7 +289,7 @@ const App: React.FC = () => {
             onViewDetails={handleViewProjectDetails} 
             currentUser={currentUser}
             clients={clients} 
-            onAction={handleLogActivity} // PASS LOGGER
+            onAction={handleLogActivity} 
           />
         ));
       case 'project-details': 
@@ -315,7 +316,7 @@ const App: React.FC = () => {
                 onUpdateClients={setClients}
                 onViewProjects={handleViewClientProjects} 
                 currentUser={currentUser} 
-                onAction={handleLogActivity} // PASS LOGGER
+                onAction={handleLogActivity} 
             />
         ));
       case 'client-details':
@@ -337,13 +338,18 @@ const App: React.FC = () => {
                 projects={projects}
                 employees={employees}
                 clients={clients}
-                investors={investors} // Passed
-                trustees={trustees}   // Passed
+                investors={investors} 
+                trustees={trustees}   
                 selectedYear={selectedFiscalYear} 
                 currentUser={currentUser} 
                 invoices={invoices}
                 onUpdateInvoices={setInvoices}
-                onAction={handleLogActivity} // PASS LOGGER
+                // --- PASSING LEDGERS DOWN ---
+                investorTransactions={investorTransactions}
+                onUpdateInvestorTransactions={setInvestorTransactions}
+                trustTransactions={trustTransactions}
+                onUpdateTrustTransactions={setTrustTransactions}
+                onAction={handleLogActivity} 
             />
         ));
       case 'company_expenses': return check('company_expenses', (
@@ -360,8 +366,23 @@ const App: React.FC = () => {
             projects={projects} 
           />
       )); 
-      case 'trusts': return check('trusts', <Trusts />); 
-      case 'investors': return check('investors', <Investors />);
+      case 'trusts': return check('trusts', (
+          <Trusts 
+            trustees={trustees}
+            onUpdateTrustees={setTrustees}
+            trustTransactions={trustTransactions}
+            onUpdateTrustTransactions={setTrustTransactions}
+          />
+      )); 
+      case 'investors': return check('investors', (
+          <Investors 
+            investors={investors}
+            onUpdateInvestors={setInvestors}
+            investorTransactions={investorTransactions}
+            onUpdateInvestorTransactions={setInvestorTransactions}
+            projects={projects}
+          />
+      ));
       case 'transactions_syp': return check('transactions', <TransactionsSYP />);
       case 'invoices': 
         return check('invoices', (
@@ -370,10 +391,10 @@ const App: React.FC = () => {
                 onUpdateInvoices={setInvoices}
                 projects={projects}
                 currentUser={currentUser} 
-                onAction={handleLogActivity} // PASS LOGGER
+                onAction={handleLogActivity}
             />
         ));
-      case 'messages': return <Messages />; 
+      case 'messages': return <Messages clients={clients} />; 
       case 'settings': return check('settings', (
           <Settings 
             permissions={permissions} 
@@ -381,7 +402,7 @@ const App: React.FC = () => {
             currentUser={currentUser} 
             systemUsers={systemUsers}
             onUpdateSystemUsers={setSystemUsers}
-            onAction={handleLogActivity} // PASS LOGGER
+            onAction={handleLogActivity} 
           />
       ));
       case 'reports': return check('reports', (

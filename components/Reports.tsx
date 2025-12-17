@@ -20,7 +20,7 @@ import {
   CheckCircle,
   Coins
 } from 'lucide-react';
-import { TransactionType, Project, Transaction, Employee, Trustee, TrustTransaction } from '../types';
+import { TransactionType, Project, Transaction, Employee, Trustee, TrustTransaction, ContractType } from '../types';
 
 interface ReportsProps {
     selectedYear?: number;
@@ -78,16 +78,30 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear, projects, transactions,
 
   // --- DAILY REPORT SPECIFIC CALCULATIONS ---
   const dailyReportData = useMemo(() => {
-      // 1. Project Funds (Balances & Alerts)
+      // 1. Project Funds (Balances & Alerts) - DYNAMIC CALCULATION
       const projectsFunds = projects
-        .filter(p => p.workshopBalance !== undefined) // Only execution projects usually
-        .map(p => ({
-            id: p.id,
-            name: p.name,
-            balance: p.workshopBalance || 0,
-            threshold: p.workshopThreshold || 0,
-            isLow: (p.workshopBalance || 0) <= (p.workshopThreshold || 0)
-        }));
+        .filter(p => p.workshopThreshold !== undefined) // Projects that track workshop balance
+        .map(p => {
+            // Calculate dynamic balance from transactions to ensure accuracy
+            const pTxns = transactions.filter(t => t.projectId === p.id);
+            const totalReceived = pTxns.filter(t => t.type === TransactionType.RECEIPT).reduce((s, t) => s + t.amount, 0);
+            const totalExpenses = pTxns.filter(t => t.type === TransactionType.PAYMENT).reduce((s, t) => s + t.amount, 0);
+            
+            let companyShare = 0;
+            if (p.contractType !== ContractType.LUMP_SUM) {
+                companyShare = (totalExpenses * (p.companyPercentage || 0)) / 100;
+            }
+            
+            const dynamicBalance = totalReceived - totalExpenses - companyShare;
+
+            return {
+                id: p.id,
+                name: p.name,
+                balance: dynamicBalance,
+                threshold: p.workshopThreshold || 0,
+                isLow: dynamicBalance <= (p.workshopThreshold || 0)
+            };
+        });
       const totalProjectFunds = projectsFunds.reduce((sum, p) => sum + p.balance, 0);
 
       // 2. Trusts (Amanat)
@@ -119,11 +133,14 @@ const Reports: React.FC<ReportsProps> = ({ selectedYear, projects, transactions,
       const totalPendingExpenses = pendingTxns.reduce((sum, t) => sum + t.amount, 0);
 
       // 5. Main Treasury (Calculated dynamically)
+      // Main Treasury = Total Income (Receipts) - Total Paid (Payments) - Funds currently held in projects/custody
       const totalIncomeHistory = transactions.filter(t => t.type === TransactionType.RECEIPT && t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0);
       const totalExpenseHistory = transactions.filter(t => t.type === TransactionType.PAYMENT && t.status === 'Completed').reduce((sum, t) => sum + t.amount, 0);
       
       const simulatedMainTreasury = Math.max(0, (totalIncomeHistory - totalExpenseHistory) - totalProjectFunds - totalCustody); 
 
+      // Total Actual Cash On Hand = Main Treasury + Project Funds + Employee Custody + Trust Funds (Positive)
+      // Note: Trust funds are a liability, but they are physically cash currently held.
       const totalCashOnHand = simulatedMainTreasury + totalProjectFunds + totalCustody + totalTrustsCashHeld;
 
       return {

@@ -1,14 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, Sparkles, RefreshCcw, Briefcase, DollarSign, AlertCircle } from 'lucide-react';
-import { Project, Transaction, Invoice, ProjectStatus, TransactionType } from '../types';
+import { Project, Transaction, Invoice, ProjectStatus, TransactionType, User } from '../types';
 import { formatCurrency } from '../services/dataService';
 
 interface AIAssistantProps {
   projects: Project[];
   transactions: Transaction[];
   invoices: Invoice[];
-  currentUser?: any;
+  currentUser?: User | null;
 }
 
 interface Message {

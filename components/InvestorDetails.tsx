@@ -1,22 +1,29 @@
 
 import React, { useState } from 'react';
-import { Investor, InvestorTransaction, ProjectType, ProjectStatus } from '../types';
-import { MOCK_INVESTOR_TRANSACTIONS, MOCK_PROJECTS } from '../constants';
+import { Investor, InvestorTransaction, ProjectType, ProjectStatus, Project } from '../types';
 import { formatCurrency } from '../services/dataService';
-import { ArrowRight, PlusCircle, MinusCircle, Wallet, Calendar, History, ArrowDownLeft, ArrowUpRight, TrendingUp, Edit, Coins, HardHat } from 'lucide-react';
+import { ArrowRight, PlusCircle, MinusCircle, History, ArrowUpRight, TrendingUp, Edit, Coins, HardHat } from 'lucide-react';
 import Modal from './Modal';
 
 interface InvestorDetailsProps {
   investor: Investor;
   onBack: () => void;
-  onUpdateInvestor?: (investor: Investor) => void; // New Prop
+  onUpdateInvestor?: (investor: Investor) => void;
+  investorTransactions: InvestorTransaction[];
+  onUpdateInvestorTransactions: (txns: InvestorTransaction[]) => void;
+  projects: Project[];
 }
 
-const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onUpdateInvestor }) => {
-  // Local state for transactions
-  const [transactions, setTransactions] = useState<InvestorTransaction[]>(
-      MOCK_INVESTOR_TRANSACTIONS.filter(t => t.investorId === investor.id)
-  );
+const InvestorDetails: React.FC<InvestorDetailsProps> = ({ 
+    investor, 
+    onBack, 
+    onUpdateInvestor, 
+    investorTransactions, 
+    onUpdateInvestorTransactions,
+    projects 
+}) => {
+  // Use passed props instead of local state init from mocks
+  const myTransactions = investorTransactions.filter(t => t.investorId === investor.id);
 
   // Transaction Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,15 +40,14 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onU
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(investor.linkedProjectIds || []);
 
   // Calculations
-  const totalCapital = transactions.filter(t => t.type === 'Capital_Injection').reduce((acc, t) => acc + t.amount, 0);
-  const totalProfit = transactions.filter(t => t.type === 'Profit_Distribution').reduce((acc, t) => acc + t.amount, 0);
-  const totalWithdrawn = transactions.filter(t => t.type === 'Withdrawal').reduce((acc, t) => acc + t.amount, 0);
+  const totalCapital = myTransactions.filter(t => t.type === 'Capital_Injection').reduce((acc, t) => acc + t.amount, 0);
+  const totalProfit = myTransactions.filter(t => t.type === 'Profit_Distribution').reduce((acc, t) => acc + t.amount, 0);
+  const totalWithdrawn = myTransactions.filter(t => t.type === 'Withdrawal').reduce((acc, t) => acc + t.amount, 0);
   
-  // Current Balance = (Capital + Profit) - Withdrawn
   const balance = (totalCapital + totalProfit) - totalWithdrawn;
 
   // Filter Execution Projects for the Modal
-  const executionProjects = MOCK_PROJECTS.filter(p => p.type === ProjectType.EXECUTION || p.status === ProjectStatus.EXECUTION);
+  const executionProjects = projects.filter(p => p.type === ProjectType.EXECUTION || p.status === ProjectStatus.EXECUTION);
 
   const handleSaveTransaction = (e: React.FormEvent) => {
       e.preventDefault();
@@ -56,8 +62,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onU
           notes: notes
       };
 
-      setTransactions([newTxn, ...transactions]);
-      MOCK_INVESTOR_TRANSACTIONS.unshift(newTxn);
+      onUpdateInvestorTransactions([newTxn, ...investorTransactions]);
       
       setIsModalOpen(false);
       setAmount(0);
@@ -156,7 +161,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onU
               <h4 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">المشاريع التنفيذية المرتبطة (مصدر الأرباح)</h4>
               <div className="flex flex-wrap gap-2">
                   {investor.linkedProjectIds.map(pid => {
-                      const proj = MOCK_PROJECTS.find(p => p.id === pid);
+                      const proj = projects.find(p => p.id === pid);
                       return proj ? (
                           <span key={pid} className="bg-white dark:bg-dark-800 text-gray-700 dark:text-gray-300 px-3 py-1 rounded-full text-xs border border-gray-200 dark:border-dark-700 shadow-sm">
                               {proj.name}
@@ -222,7 +227,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onU
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-                      {transactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(txn => (
+                      {myTransactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(txn => (
                           <tr key={txn.id} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
                               <td className="px-6 py-4 font-mono text-gray-600 dark:text-gray-400">{txn.date}</td>
                               <td className="px-6 py-4">
@@ -236,7 +241,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onU
                               </td>
                           </tr>
                       ))}
-                      {transactions.length === 0 && (
+                      {myTransactions.length === 0 && (
                           <tr>
                               <td colSpan={4} className="text-center py-12 text-gray-400">لا توجد حركات مسجلة</td>
                           </tr>
@@ -301,12 +306,10 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onU
           </form>
       </Modal>
 
-      {/* Edit Percent Modal (Capital) */}
+      {/* Other Modals (Edit Percent, Projects) - Logic remains same but using passed props/handlers */}
       <Modal isOpen={isEditPercentOpen} onClose={() => setIsEditPercentOpen(false)} title="تعديل نسبة الربح">
           <form onSubmit={handleSavePercentage} className="space-y-4">
-              <div className="bg-purple-50 dark:bg-purple-900/10 p-3 rounded-lg border border-purple-100 dark:border-purple-800 text-sm text-purple-800 dark:text-purple-300">
-                  <p>تغيير النسبة ينطبق على توزيعات الأرباح المستقبلية.</p>
-              </div>
+              {/* ... same content ... */}
               <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نسبة الربح (%)</label>
                   <input 
@@ -324,7 +327,6 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, onBack, onU
           </form>
       </Modal>
 
-      {/* Manage Linked Projects Modal (Partner) */}
       <Modal isOpen={isManageProjectsOpen} onClose={() => setIsManageProjectsOpen(false)} title="إدارة المشاريع المرتبطة">
           <form onSubmit={handleSaveProjects} className="space-y-4">
               <div className="bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800 text-sm text-blue-800 dark:text-blue-300">
