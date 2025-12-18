@@ -1,20 +1,20 @@
 
 import React, { useMemo } from 'react';
-import { Trustee } from '../types';
-import { MOCK_TRUST_TRANSACTIONS } from '../constants';
+import { Trustee, TrustTransaction } from '../types';
 import { formatCurrency } from '../services/dataService';
 import { LogOut, Shield, ArrowDownLeft, ArrowUpRight, History, Calendar, User } from 'lucide-react';
 
 interface TrusteePortalProps {
   trustee: Trustee;
   onLogout: () => void;
+  trustTransactions: TrustTransaction[]; // Receiving live transactions
 }
 
-const TrusteePortal: React.FC<TrusteePortalProps> = ({ trustee, onLogout }) => {
+const TrusteePortal: React.FC<TrusteePortalProps> = ({ trustee, onLogout, trustTransactions }) => {
   
-  // Calculate Balance and Transactions
+  // Calculate Balance and Transactions based on LIVE prop
   const { transactions, balance, totalDeposits, totalWithdrawals } = useMemo(() => {
-      const txns = MOCK_TRUST_TRANSACTIONS
+      const txns = trustTransactions
         .filter(t => t.trusteeId === trustee.id)
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         
@@ -27,7 +27,7 @@ const TrusteePortal: React.FC<TrusteePortalProps> = ({ trustee, onLogout }) => {
           totalDeposits: deposits,
           totalWithdrawals: withdrawals
       };
-  }, [trustee.id]);
+  }, [trustee.id, trustTransactions]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-950 font-cairo text-right transition-colors" dir="rtl">

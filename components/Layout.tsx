@@ -28,11 +28,14 @@ import {
   Shield,
   TrendingUp,
   BarChart4,
-  Activity // Added Activity Icon
+  Activity,
+  Command,
+  Zap // Imported Zap Icon
 } from 'lucide-react';
 import { User, UserRole, RolePermissions, Project, Client, Employee, Invoice } from '../types';
 import { MOCK_NOTIFICATIONS } from '../constants';
 import { formatCurrency } from '../services/dataService';
+import CommandPalette from './CommandPalette';
 
 export interface SearchResultItem {
   id: string;
@@ -73,11 +76,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
 
-  // Search State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  // Command Palette State
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   // Generate Year Options (e.g., Current Year - 2 to Current Year + 1)
   const currentYear = new Date().getFullYear();
@@ -89,6 +89,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
     }
+
+    // Keyboard Shortcut for Command Palette (Ctrl+K or Cmd+K)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const toggleDarkMode = () => {
@@ -106,9 +117,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
       }
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setIsSearchOpen(false);
-      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
@@ -116,63 +124,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
     };
   }, []);
 
-  // Search Logic - Updated to use searchData prop
-  useEffect(() => {
-    if (searchQuery.trim().length < 1 || !searchData) {
-      setSearchResults([]);
-      return;
-    }
-
-    const query = searchQuery.toLowerCase();
-    const results: SearchResultItem[] = [];
-
-    // Projects
-    searchData.projects.forEach(p => {
-      if (p.name.toLowerCase().includes(query) || p.clientName.toLowerCase().includes(query) || p.location.toLowerCase().includes(query)) {
-        results.push({ id: p.id, type: 'project', title: p.name, subtitle: `مشروع - ${p.clientName}`, data: p });
-      }
-    });
-
-    // Clients
-    searchData.clients.forEach(c => {
-      if (c.name.toLowerCase().includes(query) || c.companyName?.toLowerCase().includes(query)) {
-        results.push({ id: c.id, type: 'client', title: c.name, subtitle: c.companyName || 'عميل', data: c });
-      }
-    });
-
-    // Employees
-    searchData.employees.forEach(e => {
-      if (e.name.toLowerCase().includes(query) || e.role.toLowerCase().includes(query)) {
-        results.push({ id: e.id, type: 'employee', title: e.name, subtitle: e.role, data: e });
-      }
-    });
-    
-    // Invoices
-    searchData.invoices.forEach(inv => {
-       if (inv.invoiceNumber.toLowerCase().includes(query) || inv.supplierName.toLowerCase().includes(query) || inv.supplierOrClient?.toLowerCase().includes(query)) {
-           results.push({ id: inv.id, type: 'invoice', title: inv.invoiceNumber, subtitle: `${inv.type} - ${formatCurrency(inv.amount)}`, data: inv });
-       }
-    });
-
-    setSearchResults(results.slice(0, 8)); // Limit results
-  }, [searchQuery, searchData]);
-
   const handleSearchSelect = (item: SearchResultItem) => {
       if (onSearchSelect) {
           onSearchSelect(item);
       }
-      setSearchQuery('');
-      setIsSearchOpen(false);
-  };
-
-  const getResultIcon = (type: string) => {
-      switch(type) {
-          case 'project': return <Briefcase size={16} className="text-primary-600" />;
-          case 'client': return <UserCircle size={16} className="text-green-600" />;
-          case 'employee': return <Users size={16} className="text-blue-600" />;
-          case 'invoice': return <FileText size={16} className="text-orange-600" />;
-          default: return <Search size={16} />;
-      }
+      setIsCommandPaletteOpen(false);
   };
 
   const menuItems = [
@@ -205,15 +161,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
   // Filter Menu Items based on permissions
   const userPermissions = permissions.find(p => p.role === user.role);
   const visibleMenuItems = menuItems.filter(item => {
-      // Always allow messages if not specified (optional) or restrict it?
-      // Assuming 'messages' wasn't in the enum, so show it for everyone or map it.
-      // Mapping special cases or defaults:
       if (item.id === 'messages' || item.id === 'transactions_syp') return true; 
-      
-      // Special: manager_reports is usually HR
       if (item.id === 'manager_reports') return userPermissions?.canView.includes('hr');
-
-      // Default check against permission list
       return userPermissions ? userPermissions.canView.includes(item.id as any) : true;
   });
 
@@ -261,6 +210,25 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-6 overflow-x-hidden custom-scrollbar">
+          {/* Focus Mode Button - Special Entry for Accountants/Admins */}
+          {[UserRole.ACCOUNTANT, UserRole.FINANCE_MANAGER, UserRole.GENERAL_MANAGER].includes(user.role) && (
+             <div className="px-4 mb-4">
+               <button
+                 onClick={() => onNavigate('accountant_focus')}
+                 className={`
+                   w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg shadow-amber-500/20 hover:shadow-xl hover:scale-[1.02]
+                   ${isDesktopSidebarCollapsed ? 'justify-center' : ''}
+                 `}
+                 title={isDesktopSidebarCollapsed ? 'وضع التركيز' : ''}
+               >
+                 <Zap size={22} className="min-w-[22px] animate-pulse-slow" />
+                 <span className={`whitespace-nowrap transition-all duration-300 font-bold text-sm ${isDesktopSidebarCollapsed ? 'hidden w-0 opacity-0' : 'block w-auto opacity-100'}`}>
+                   وضع التركيز
+                 </span>
+               </button>
+             </div>
+          )}
+
           <ul className="space-y-1 px-4">
             {visibleMenuItems.map((item) => {
               const Icon = item.icon;
@@ -281,7 +249,6 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
                   >
                     <div className="relative z-10 flex items-center gap-3">
                       <Icon size={22} className={`min-w-[22px] transition-transform duration-300 ${active ? 'text-white scale-110' : 'text-gray-400 dark:text-gray-500 group-hover:text-primary-600 dark:group-hover:text-primary-400 group-hover:scale-110'}`} />
-                      {/* Fake notification dot for messages */}
                       {item.id === 'messages' && (
                         <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-dark-950 rounded-full animate-pulse"></span>
                       )}
@@ -370,51 +337,23 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
                 </select>
             </div>
 
-            {/* Search */}
-            <div className="relative hidden md:block group" ref={searchRef}>
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-primary-500 w-4 h-4 transition-colors" />
-              <input 
-                type="text" 
-                placeholder="بحث سريع (مشروع، عميل، موظف)..." 
-                className="pl-4 pr-10 py-2.5 border border-gray-200 dark:border-dark-700 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 w-72 bg-gray-50 dark:bg-dark-900 dark:text-white focus:bg-white dark:focus:bg-dark-950 transition-all shadow-sm focus:shadow-md"
-                value={searchQuery}
-                onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setIsSearchOpen(true);
-                }}
-                onFocus={() => setIsSearchOpen(true)}
-              />
-              
-              {/* Search Results Dropdown */}
-              {isSearchOpen && searchQuery.length > 0 && (
-                  <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-dark-900 rounded-xl shadow-xl border border-gray-100 dark:border-dark-700 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
-                      {searchResults.length > 0 ? (
-                          <ul className="py-2 max-h-80 overflow-y-auto custom-scrollbar">
-                              {searchResults.map((result) => (
-                                  <li key={`${result.type}-${result.id}`}>
-                                      <button 
-                                          className="w-full text-right px-4 py-3 hover:bg-gray-50 dark:hover:bg-dark-800 flex items-center gap-3 transition-colors group"
-                                          onClick={() => handleSearchSelect(result)}
-                                      >
-                                          <div className="p-2 bg-gray-100 dark:bg-dark-800 rounded-lg group-hover:bg-white dark:group-hover:bg-dark-700 transition-colors">
-                                              {getResultIcon(result.type)}
-                                          </div>
-                                          <div>
-                                              <p className="text-sm font-bold text-gray-800 dark:text-gray-200 group-hover:text-primary-600 transition-colors">{result.title}</p>
-                                              <p className="text-xs text-gray-500 dark:text-gray-400">{result.subtitle}</p>
-                                          </div>
-                                      </button>
-                                  </li>
-                              ))}
-                          </ul>
-                      ) : (
-                          <div className="p-6 text-center text-gray-400 text-sm">
-                              لا توجد نتائج مطابقة
-                          </div>
-                      )}
-                  </div>
-              )}
-            </div>
+            {/* Quick Command Trigger */}
+            <button 
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="hidden md:flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-dark-800 text-gray-500 dark:text-gray-400 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-dark-700 transition-colors border border-transparent hover:border-primary-300"
+            >
+              <Search size={16} />
+              <span>بحث سريع...</span>
+              <kbd className="hidden lg:inline-block px-1.5 py-0.5 text-xs bg-white dark:bg-dark-900 rounded border border-gray-200 dark:border-dark-600 font-mono">⌘K</kbd>
+            </button>
+
+            {/* Mobile Search Button */}
+            <button 
+              onClick={() => setIsCommandPaletteOpen(true)}
+              className="md:hidden p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-800 rounded-lg"
+            >
+              <Search size={20} />
+            </button>
 
             {/* Dark Mode Toggle */}
             <button
@@ -489,6 +428,15 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
           </div>
         </main>
       </div>
+
+      {/* Command Palette */}
+      <CommandPalette 
+        isOpen={isCommandPaletteOpen} 
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigate={onNavigate}
+        onSearchSelect={handleSearchSelect}
+        searchData={searchData || { projects: [], clients: [], employees: [], invoices: [] }}
+      />
     </div>
   );
 };

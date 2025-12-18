@@ -1,6 +1,6 @@
+
 import React, { useState } from 'react';
-import { Employee, PayrollRecord } from '../types';
-import { MOCK_PAYROLL, MOCK_DAILY_REPORTS, MOCK_ATTENDANCE } from '../constants';
+import { Employee, PayrollRecord, AttendanceRecord, DailyReport } from '../types';
 import { formatCurrency } from '../services/dataService';
 import { 
   LayoutDashboard, 
@@ -8,33 +8,37 @@ import {
   Banknote, 
   LogOut, 
   Clock, 
-  Download, 
   Wallet, 
   Calendar,
-  CheckCircle
+  CheckCircle,
+  Download
 } from 'lucide-react';
 
 interface EmployeePortalProps {
   employee: Employee;
   onLogout: () => void;
+  // NEW: Persistent Props
+  payroll: PayrollRecord[];
+  attendance: AttendanceRecord[];
+  dailyReports: DailyReport[];
 }
 
-const EmployeePortal: React.FC<EmployeePortalProps> = ({ employee, onLogout }) => {
+const EmployeePortal: React.FC<EmployeePortalProps> = ({ employee, onLogout, payroll, attendance, dailyReports }) => {
   const [activeSection, setActiveSection] = useState<'dashboard' | 'tasks' | 'payroll'>('dashboard');
   const [selectedPayrollMonth, setSelectedPayrollMonth] = useState<string>(new Date().toLocaleString('ar-SA', { month: 'long' }));
 
   // Derived Data
-  const currentPayroll = MOCK_PAYROLL.find(p => 
+  const currentPayroll = payroll.find(p => 
     p.employeeId === employee.id && 
     p.month === selectedPayrollMonth
   );
 
-  const myTasks = MOCK_DAILY_REPORTS
+  const myTasks = dailyReports
     .filter(r => r.employeeId === employee.id)
-    .flatMap(r => r.planForTomorrow || []) // Simplified: getting tasks from reports
+    .flatMap(r => r.planForTomorrow || [])
     .filter(t => !t.isCompleted); 
     
-  const todayAttendance = MOCK_ATTENDANCE.find(a => 
+  const todayAttendance = attendance.find(a => 
       a.employeeId === employee.id && 
       a.date === new Date().toISOString().split('T')[0]
   );
@@ -157,7 +161,7 @@ const EmployeePortal: React.FC<EmployeePortalProps> = ({ employee, onLogout }) =
                              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                                 <Calendar className="text-primary-600" size={20} /> آخر الرواتب
                              </h3>
-                             {MOCK_PAYROLL.filter(p => p.employeeId === employee.id).slice(0, 2).map(pay => (
+                             {payroll.filter(p => p.employeeId === employee.id).slice(0, 2).map(pay => (
                                  <div key={pay.id} className="flex justify-between items-center p-3 border-b border-gray-50 last:border-0">
                                      <div>
                                          <p className="font-bold text-gray-800">{pay.month} {pay.year}</p>

@@ -1,20 +1,20 @@
 
 import React, { useMemo } from 'react';
-import { Investor } from '../types';
-import { MOCK_INVESTOR_TRANSACTIONS } from '../constants';
+import { Investor, InvestorTransaction } from '../types';
 import { formatCurrency } from '../services/dataService';
 import { LogOut, TrendingUp, ArrowDownLeft, ArrowUpRight, History, Calendar, Wallet } from 'lucide-react';
 
 interface InvestorPortalProps {
   investor: Investor;
   onLogout: () => void;
+  investorTransactions: InvestorTransaction[]; // Receiving live transactions
 }
 
-const InvestorPortal: React.FC<InvestorPortalProps> = ({ investor, onLogout }) => {
+const InvestorPortal: React.FC<InvestorPortalProps> = ({ investor, onLogout, investorTransactions }) => {
   
-  // Calculate Balance and Stats
+  // Calculate Balance and Stats based on LIVE prop
   const { transactions, balance, totalCapital, totalProfit, totalWithdrawn } = useMemo(() => {
-      const txns = MOCK_INVESTOR_TRANSACTIONS
+      const txns = investorTransactions
         .filter(t => t.investorId === investor.id)
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         
@@ -29,7 +29,7 @@ const InvestorPortal: React.FC<InvestorPortalProps> = ({ investor, onLogout }) =
           totalProfit: profit,
           totalWithdrawn: withdrawn
       };
-  }, [investor.id]);
+  }, [investor.id, investorTransactions]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-950 font-cairo text-right transition-colors" dir="rtl">

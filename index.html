@@ -69,10 +69,36 @@
           scrollbar-width: none;  /* Firefox */
       }
 
-      /* PRINT STYLES */
+      /* PRINT STYLES - SMART GENERATOR LOGIC */
       @media print {
-        @page { margin: 5mm; size: A4; }
-        body { 
+        @page { margin: 0; size: A4; }
+        
+        /* 
+           If the body has the class 'printing-mode', we hide everything 
+           except the element with class 'printable-document'.
+        */
+        body.printing-mode * {
+          visibility: hidden;
+        }
+        
+        body.printing-mode .printable-document, 
+        body.printing-mode .printable-document * {
+          visibility: visible;
+        }
+
+        body.printing-mode .printable-document {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          background: white;
+          color: black;
+        }
+
+        /* Legacy Print Styles Fallback */
+        body:not(.printing-mode) { 
           background-color: white !important; 
           color: black !important;
           -webkit-print-color-adjust: exact; 
@@ -81,13 +107,18 @@
           overflow: visible !important;
         }
         
-        /* Hide UI elements */
-        aside, header, .no-print, button, .fixed, .hidden-print { 
+        body:not(.printing-mode) aside, 
+        body:not(.printing-mode) header, 
+        body:not(.printing-mode) .no-print, 
+        body:not(.printing-mode) button, 
+        body:not(.printing-mode) .fixed, 
+        body:not(.printing-mode) .hidden-print { 
           display: none !important; 
         }
 
-        /* Layout resets to ensure scrolling content prints fully */
-        #root, #root > div, main { 
+        body:not(.printing-mode) #root, 
+        body:not(.printing-mode) #root > div, 
+        body:not(.printing-mode) main { 
           display: block !important; 
           height: auto !important; 
           min-height: auto !important;
@@ -98,23 +129,14 @@
           position: static !important;
         }
 
-        /* Table fixes */
-        .overflow-x-auto { overflow-x: visible !important; }
-        table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto; }
-        tr { page-break-inside: avoid; page-break-after: auto; }
-        thead { display: table-header-group; }
-        tfoot { display: table-footer-group; }
-        th, td { border: 1px solid #ddd !important; color: black !important; padding: 4px 8px !important; }
-        thead th { background-color: #f3f4f6 !important; font-weight: bold !important; -webkit-print-color-adjust: exact; }
+        body:not(.printing-mode) .overflow-x-auto { overflow-x: visible !important; }
+        body:not(.printing-mode) table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto; }
+        body:not(.printing-mode) tr { page-break-inside: avoid; page-break-after: auto; }
+        body:not(.printing-mode) th, body:not(.printing-mode) td { border: 1px solid #ddd !important; color: black !important; padding: 4px 8px !important; }
         
-        /* Specific Visibility */
         .print-only { display: block !important; }
-        
-        /* Hide shadows and backgrounds */
         .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl { box-shadow: none !important; }
         .bg-white, .dark .bg-dark-900 { background-color: transparent !important; }
-        
-        /* Ensure text contrast */
         .text-white { color: black !important; }
       }
       .print-only { display: none; }

@@ -1,7 +1,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Project, Invoice, InvoiceType, ProjectStatus, ProjectType } from '../types';
-import { MOCK_PROJECTS, MOCK_INVOICES } from '../constants';
+import { Project, Invoice, ProjectStatus, ProjectType } from '../types';
 import { 
   Briefcase, 
   MapPin, 
@@ -29,6 +28,9 @@ import { formatCurrency } from '../services/dataService';
 interface ClientPortalProps {
   clientUsername: string;
   onLogout: () => void;
+  // Receiving live data from App.tsx
+  projects: Project[];
+  invoices: Invoice[];
 }
 
 interface ChatMessage {
@@ -38,7 +40,7 @@ interface ChatMessage {
   time: string;
 }
 
-const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout }) => {
+const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout, projects, invoices }) => {
   const [view, setView] = useState<'dashboard' | 'project_detail'>('dashboard');
   const [myProjects, setMyProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -53,10 +55,10 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Fetch all projects associated with this username
-    const foundProjects = MOCK_PROJECTS.filter(p => p.clientUsername === clientUsername);
+    // Filter projects from the LIVE projects prop
+    const foundProjects = projects.filter(p => p.clientUsername === clientUsername);
     setMyProjects(foundProjects);
-  }, [clientUsername]);
+  }, [clientUsername, projects]);
 
   useEffect(() => {
     if (isChatOpen && chatEndRef.current) {
@@ -66,8 +68,8 @@ const ClientPortal: React.FC<ClientPortalProps> = ({ clientUsername, onLogout })
 
   const handleOpenProject = (project: Project) => {
     setSelectedProject(project);
-    // Filter invoices: Must be for this project, Purchase Type (as per previous instructions sales were removed, keeping legacy check just in case), AND VISIBLE TO CLIENT
-    const relatedInvoices = MOCK_INVOICES.filter(inv => 
+    // Filter invoices from the LIVE invoices prop
+    const relatedInvoices = invoices.filter(inv => 
         inv.projectId === project.id && 
         inv.isClientVisible === true
     );

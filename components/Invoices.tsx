@@ -2,9 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { formatCurrency } from '../services/dataService';
 import { Invoice, InvoiceItem, InvoiceType, StatementColumn, User, Project, ActivityLog } from '../types';
-import { Plus, Search, FileText, CheckCircle, ArrowLeft, Trash2, Camera, Percent, X, Paperclip, Settings, Eye, EyeOff, Edit, Hash } from 'lucide-react';
+import { Plus, Search, FileText, CheckCircle, ArrowLeft, Trash2, Camera, Percent, X, Paperclip, Settings, Eye, EyeOff, Edit, Hash, Printer } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
 import Modal from './Modal';
+import DocumentPreview from './DocumentPreview';
 
 interface InvoicesProps {
     invoices: Invoice[];
@@ -17,6 +18,10 @@ interface InvoicesProps {
 const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoices, projects, currentUser, onAction }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [view, setView] = useState<'list' | 'create'>('list');
+
+  // Print State
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+  const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
 
   // Creation State
   const [currentInvoice, setCurrentInvoice] = useState<Partial<Invoice>>({
@@ -137,6 +142,11 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoices, project
       setView('create');
   };
 
+  const handlePrintInvoice = (inv: Invoice) => {
+      setInvoiceToPrint(inv);
+      setPrintPreviewOpen(true);
+  };
+
   const toggleClientVisibility = (invoiceId: string) => {
       onUpdateInvoices(invoices.map(inv => 
           inv.id === invoiceId ? { ...inv, isClientVisible: !inv.isClientVisible } : inv
@@ -235,6 +245,13 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoices, project
                                     <td className="px-6 py-4">
                                         <div className="flex gap-2">
                                             <button 
+                                                onClick={() => handlePrintInvoice(inv)}
+                                                className="text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 p-2"
+                                                title="طباعة رسمية"
+                                            >
+                                                <Printer size={18} />
+                                            </button>
+                                            <button 
                                                 onClick={() => handleEditInvoice(inv)}
                                                 className="text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 p-2"
                                                 title="تعديل"
@@ -254,6 +271,15 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoices, project
                     </table>
                 </div>
             </div>
+
+            {/* Smart Print Component */}
+            <DocumentPreview 
+                isOpen={printPreviewOpen} 
+                onClose={() => setPrintPreviewOpen(false)} 
+                type="invoice" 
+                data={invoiceToPrint} 
+                project={projects.find(p => p.id === invoiceToPrint?.projectId)}
+            />
         </div>
       );
   }

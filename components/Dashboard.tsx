@@ -1,24 +1,24 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
   Wallet, 
-  AlertCircle,
-  Briefcase
+  Briefcase, 
+  AlertCircle 
 } from 'lucide-react';
 import { 
+  AreaChart, 
+  Area, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  AreaChart,
-  Area,
   TooltipProps
 } from 'recharts';
+import { DashboardStats, Project, Invoice, Transaction, TransactionType, ProjectStatus } from '../types';
 import { formatCurrency } from '../services/dataService';
-import { DashboardStats, Invoice, Project, Transaction, TransactionType, ProjectStatus } from '../types';
 
 interface DashboardProps {
   onNavigate: (page: string) => void;
@@ -28,15 +28,14 @@ interface DashboardProps {
   invoices: Invoice[];
 }
 
-// Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white dark:bg-dark-800 p-4 rounded-xl shadow-xl border border-gray-100 dark:border-dark-700 text-right animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white dark:bg-dark-800 p-3 rounded-lg shadow-xl border border-gray-100 dark:border-dark-700 text-right">
         <p className="font-bold text-gray-800 dark:text-white mb-2">{label}</p>
         {payload.map((entry, index) => (
-          <div key={index} className="flex items-center gap-2 text-sm mb-1 last:mb-0">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+          <div key={index} className="flex items-center gap-2 text-xs mb-1">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
             <span className="text-gray-600 dark:text-gray-300">{entry.name}:</span>
             <span className="font-bold text-gray-800 dark:text-white" dir="ltr">
               {formatCurrency(entry.value as number)}
@@ -55,8 +54,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
   
   // Calculate stats based on year and live data
   useEffect(() => {
-    // Filter transactions by year
-    const relevantTransactions = transactions.filter(t => t.date.startsWith(selectedYear.toString()));
+    // Filter transactions by year AND Currency (USD only for main dashboard)
+    const relevantTransactions = transactions.filter(t => 
+        t.date.startsWith(selectedYear.toString()) && 
+        t.currency !== 'SYP'
+    );
     
     // Revenue: Receipts
     const revenue = relevantTransactions.filter(t => t.type === TransactionType.RECEIPT).reduce((sum, t) => sum + t.amount, 0);
@@ -89,8 +91,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
           const monthIndex = i + 1;
           const monthPrefix = `${selectedYear}-${String(monthIndex).padStart(2, '0')}`;
           
-          // Filter transactions for this specific month from LIVE data
-          const monthTxns = transactions.filter(t => t.date.startsWith(monthPrefix));
+          // Filter transactions for this specific month from LIVE data (USD Only)
+          const monthTxns = transactions.filter(t => 
+              t.date.startsWith(monthPrefix) && 
+              t.currency !== 'SYP'
+          );
           
           data.push({
               name: months[i],
@@ -108,7 +113,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
       
       {/* Year Indicator Banner */}
       <div className="bg-primary-50 dark:bg-primary-900/10 border border-primary-100 dark:border-primary-800 p-3 rounded-xl flex justify-center items-center gap-2 text-primary-700 dark:text-primary-300 font-bold text-sm shadow-sm">
-          <span>أنت تشاهد البيانات المالية لسنة:</span>
+          <span>أنت تشاهد البيانات المالية ($) لسنة:</span>
           <span className="bg-white dark:bg-dark-900 px-3 py-0.5 rounded-lg shadow-sm border border-primary-100 dark:border-primary-900 text-lg">{selectedYear}</span>
       </div>
 
@@ -116,7 +121,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards delay-75">
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">إجمالي الإيرادات</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">إجمالي الإيرادات ($)</p>
             <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{formatCurrency(stats.totalRevenue)}</h3>
           </div>
           <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-full">
@@ -126,17 +131,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
 
         <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards delay-100">
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">إجمالي المصروفات</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">إجمالي المصروفات ($)</p>
             <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{formatCurrency(stats.totalExpenses)}</h3>
           </div>
           <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-full">
             <TrendingDown className="text-blue-600 dark:text-blue-400 w-6 h-6" />
           </div>
         </div>
-
+        
         <div className="bg-white dark:bg-dark-900 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 p-6 flex items-center justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-default animate-in slide-in-from-bottom-2 fade-in fill-mode-backwards delay-150">
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">صافي الربح</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">صافي الربح ($)</p>
             <h3 className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(stats.netProfit)}
             </h3>
@@ -164,7 +169,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 fade-in duration-500 delay-300">
         {/* Income vs Expense Chart */}
         <div className="bg-white dark:bg-dark-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-800 hover:shadow-md transition-shadow">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6">التدفق النقدي ({selectedYear})</h3>
+          <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6">التدفق النقدي $ ({selectedYear})</h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
@@ -196,7 +201,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
             تنبيهات وإشعارات
           </h3>
           <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            {/* Logic to show real alerts based on data can be added here. For now, showing empty state if no mock alerts are relevant to empty data */}
             {filteredInvoices.filter(i => i.status === 'Overdue').length > 0 ? (
                  filteredInvoices.filter(i => i.status === 'Overdue').map((inv, idx) => (
                     <div 
@@ -246,7 +250,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, selectedYear, project
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
-              {filteredInvoices.map((inv) => (
+              {filteredInvoices.slice(0, 5).map((inv) => (
                 <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-200">{inv.invoiceNumber}</td>
                   <td className="px-6 py-4 text-gray-600 dark:text-gray-400">

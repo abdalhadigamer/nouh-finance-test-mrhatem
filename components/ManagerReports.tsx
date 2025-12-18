@@ -1,15 +1,18 @@
 
 import React, { useState } from 'react';
-import { MOCK_DAILY_REPORTS, MOCK_ATTENDANCE } from '../constants';
-import { DailyReport, Employee, Task } from '../types';
+import { DailyReport, Employee, Task, AttendanceRecord } from '../types';
 import { Calendar, CheckCircle, Clock, FileText, Star, AlertTriangle, Flag, Save } from 'lucide-react';
 import Modal from './Modal';
 
 interface ManagerReportsProps {
   employees: Employee[];
+  // NEW: Persistent Data Props
+  dailyReports: DailyReport[];
+  onUpdateDailyReports: (reports: DailyReport[]) => void;
+  attendance: AttendanceRecord[];
 }
 
-const ManagerReports: React.FC<ManagerReportsProps> = ({ employees }) => {
+const ManagerReports: React.FC<ManagerReportsProps> = ({ employees, dailyReports, onUpdateDailyReports, attendance }) => {
   // Helper to get local YYYY-MM-DD
   const getLocalToday = () => {
     const d = new Date();
@@ -17,9 +20,6 @@ const ManagerReports: React.FC<ManagerReportsProps> = ({ employees }) => {
   };
 
   const [selectedDate, setSelectedDate] = useState<string>(getLocalToday()); 
-  
-  // Initialize state with mocks to allow updates in UI
-  const [reports, setReports] = useState<DailyReport[]>(MOCK_DAILY_REPORTS);
   
   const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
   const [reportInEdit, setReportInEdit] = useState<DailyReport | null>(null);
@@ -54,20 +54,14 @@ const ManagerReports: React.FC<ManagerReportsProps> = ({ employees }) => {
   const handleSaveReview = () => {
     if (!reportInEdit) return;
     
-    // Update the local state
+    // Update the state via prop
     const finalReport = { ...reportInEdit, status: 'Reviewed' as const };
     
-    const updatedReports = reports.map(r => 
+    const updatedReports = dailyReports.map(r => 
       r.id === finalReport.id ? finalReport : r
     );
 
-    setReports(updatedReports);
-    
-    // NEW: Update Mock Data for persistence
-    const mockIndex = MOCK_DAILY_REPORTS.findIndex(r => r.id === finalReport.id);
-    if (mockIndex !== -1) {
-        MOCK_DAILY_REPORTS[mockIndex] = finalReport;
-    }
+    onUpdateDailyReports(updatedReports);
     
     alert(`تم حفظ تقييم الموظف ${finalReport.employeeName} واعتماد الخطة.`);
     handleCloseReport();
@@ -75,10 +69,10 @@ const ManagerReports: React.FC<ManagerReportsProps> = ({ employees }) => {
 
   // Filter employees based on attendance for the selected date
   const getAttendanceStatus = (empId: string) => {
-    return MOCK_ATTENDANCE.find(r => r.employeeId === empId && r.date === selectedDate);
+    return attendance.find(r => r.employeeId === empId && r.date === selectedDate);
   };
 
-  const reportsForDate = reports.filter(r => r.date === selectedDate);
+  const reportsForDate = dailyReports.filter(r => r.date === selectedDate);
 
   const totalEmployees = employees.length;
   const submittedReports = reportsForDate.length;
@@ -107,7 +101,7 @@ const ManagerReports: React.FC<ManagerReportsProps> = ({ employees }) => {
            <div>
              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">الموظفين الحاضرين</p>
              <h3 className="text-2xl font-bold text-gray-800 dark:text-white">
-               {MOCK_ATTENDANCE.filter(a => a.date === selectedDate).length} <span className="text-sm font-normal text-gray-400">/ {totalEmployees}</span>
+               {attendance.filter(a => a.date === selectedDate).length} <span className="text-sm font-normal text-gray-400">/ {totalEmployees}</span>
              </h3>
            </div>
            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full">
@@ -157,7 +151,7 @@ const ManagerReports: React.FC<ManagerReportsProps> = ({ employees }) => {
              <tbody className="divide-y divide-gray-100 dark:divide-dark-800">
                {employees.map(emp => {
                  const report = reportsForDate.find(r => r.employeeId === emp.id);
-                 const attendance = getAttendanceStatus(emp.id);
+                 const attendanceRecord = getAttendanceStatus(emp.id);
 
                  return (
                    <tr key={emp.id} className="hover:bg-gray-50 dark:hover:bg-dark-800 transition-colors">
@@ -168,9 +162,9 @@ const ManagerReports: React.FC<ManagerReportsProps> = ({ employees }) => {
                        </div>
                      </td>
                      <td className="px-6 py-4">
-                        {attendance ? (
-                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${attendance.status === 'Late' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
-                            {attendance.status === 'Present' ? 'حاضر' : 'متأخر'} ({attendance.clockIn})
+                        {attendanceRecord ? (
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${attendanceRecord.status === 'Late' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
+                            {attendanceRecord.status === 'Present' ? 'حاضر' : 'متأخر'} ({attendanceRecord.clockIn})
                           </span>
                         ) : (
                           <span className="text-gray-400 text-xs">غائب</span>

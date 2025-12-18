@@ -1,12 +1,16 @@
 
-import React, { useEffect, useState } from 'react';
-import { getRecentSYPTransactions, formatCurrency } from '../services/dataService';
+import React, { useState } from 'react';
+import { formatCurrency } from '../services/dataService';
 import { Transaction, TransactionType } from '../types';
 import { Download, PlusCircle, ArrowUpRight, ArrowDownLeft, Search, TrendingDown, TrendingUp } from 'lucide-react';
 import Modal from './Modal';
 
-const TransactionsSYP: React.FC = () => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+interface TransactionsSYPProps {
+    transactions: Transaction[];
+    onUpdateTransactions: (transactions: Transaction[]) => void;
+}
+
+const TransactionsSYP: React.FC<TransactionsSYPProps> = ({ transactions, onUpdateTransactions }) => {
   const [activeTab, setActiveTab] = useState<'expenses' | 'revenues'>('expenses');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -21,10 +25,6 @@ const TransactionsSYP: React.FC = () => {
     type: TransactionType.PAYMENT,
   });
 
-  useEffect(() => {
-    getRecentSYPTransactions().then(setTransactions);
-  }, []);
-
   const handleAddTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -33,14 +33,15 @@ const TransactionsSYP: React.FC = () => {
       type: newTxn.type as TransactionType,
       date: new Date().toISOString().split('T')[0],
       amount: newTxn.amount || 0,
-      currency: 'SYP',
+      currency: 'SYP', // Explicitly SYP
       description: newTxn.description || '',
       fromAccount: newTxn.fromAccount || 'الصندوق اليومي',
       toAccount: newTxn.toAccount || '',
-      projectId: 'N/A', // Not linked
+      projectId: 'N/A', 
+      status: 'Completed'
     };
 
-    setTransactions([txn, ...transactions]);
+    onUpdateTransactions([txn, ...transactions]);
     setIsModalOpen(false);
     resetForm();
   };
@@ -71,22 +72,23 @@ const TransactionsSYP: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  // CRITICAL FIX: Filter only SYP transactions from the global list
   const filteredTransactions = transactions.filter(txn => {
+    const isSYP = txn.currency === 'SYP';
     const matchesSearch = txn.description.includes(searchTerm) || txn.fromAccount.includes(searchTerm) || txn.toAccount.includes(searchTerm);
     let matchesType = false;
 
     if (activeTab === 'expenses') matchesType = txn.type === TransactionType.PAYMENT;
     else if (activeTab === 'revenues') matchesType = txn.type === TransactionType.RECEIPT;
 
-    return matchesType && matchesSearch;
+    return isSYP && matchesType && matchesSearch;
   });
 
   // Calculations
-  const totalIncome = transactions.filter(t => t.type === TransactionType.RECEIPT).reduce((acc, curr) => acc + curr.amount, 0);
-  const totalExpense = transactions.filter(t => t.type === TransactionType.PAYMENT).reduce((acc, curr) => acc + curr.amount, 0);
+  const sypTransactions = transactions.filter(t => t.currency === 'SYP');
+  const totalIncome = sypTransactions.filter(t => t.type === TransactionType.RECEIPT).reduce((acc, curr) => acc + curr.amount, 0);
+  const totalExpense = sypTransactions.filter(t => t.type === TransactionType.PAYMENT).reduce((acc, curr) => acc + curr.amount, 0);
   const balance = totalIncome - totalExpense;
-
-  const currentViewTotal = filteredTransactions.reduce((acc, curr) => acc + curr.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -105,12 +107,10 @@ const TransactionsSYP: React.FC = () => {
           </div>
           <div className="bg-white dark:bg-dark-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800">
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">إجمالي المصاريف</p>
-              {/* Changed to Blue */}
               <h3 className="text-2xl font-bold text-blue-600">{formatCurrency(totalExpense, 'SYP')}</h3>
           </div>
           <div className="bg-white dark:bg-dark-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-dark-800">
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">الرصيد المتبقي</p>
-              {/* Positive is Good (Green/Blue), Negative is Debt (Red) */}
               <h3 className={`text-2xl font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {formatCurrency(balance, 'SYP')}
               </h3>
@@ -148,13 +148,6 @@ const TransactionsSYP: React.FC = () => {
             />
         </div>
         <div className="flex gap-2 w-full md:w-auto">
-            <button 
-                className="bg-white dark:bg-dark-800 border border-gray-300 dark:border-dark-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-dark-700 transition-colors"
-                onClick={() => alert("تصدير...")}
-            >
-                <Download size={18} />
-                <span className="hidden sm:inline">تصدير</span>
-            </button>
             <button 
                 onClick={handleOpenModal}
                 className={`text-white px-5 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm font-bold ${
